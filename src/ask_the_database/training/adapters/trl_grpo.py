@@ -12,7 +12,7 @@ from typing import Any
 
 import torch
 from omegaconf import DictConfig
-from trl import GRPOConfig  # type: ignore[attr-defined]
+from trl.trainer.grpo_config import GRPOConfig
 
 from ask_the_database.rewards.rubric import SQLRewardRubric
 from ask_the_database.training.adapters.base import BaseRLAdapter, RolloutBatch
