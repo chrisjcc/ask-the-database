@@ -18,7 +18,8 @@ from transformers import (
     PreTrainedModel,
     PreTrainedTokenizerBase,
 )
-from trl import SFTConfig, SFTTrainer  # type: ignore[attr-defined]
+from trl.trainer.sft_config import SFTConfig
+from trl.trainer.sft_trainer import SFTTrainer
 
 from ask_the_database.training.dataset import load_sft_dataset
 
