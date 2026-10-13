@@ -1,0 +1,27 @@
+model_path: "models/sft/final"
+output_dir: "models/rlvr/final"
+learning_rate: 1.0e-6
+num_rollouts_per_prompt: 8
+max_turns: 5
+step_penalty: -0.05
+recovery_bonus: 0.3
+beta: 0.05
+max_steps: 250
+logging_steps: 5
+save_steps: 50
+report_to: "none"
+dry_run: false
+
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  bias: "none"
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
