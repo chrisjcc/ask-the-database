@@ -1,7 +1,7 @@
 """Hierarchical verifiable reward rubric composite for SQL reinforcement learning."""
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from omegaconf import DictConfig, OmegaConf
 
@@ -27,24 +27,24 @@ class SQLRewardRubric:
     """Framework-independent composite reward evaluator for SQL RLVR."""
 
     def __init__(self, config: DictConfig | dict[str, Any] | None = None) -> None:
-        if config is None:
-            config = {
-                "float_tolerance": 1e-4,
-                "use_test_suite": True,
-                "num_mutations": 4,
-                "weights": {
-                    "syntax_penalty": -1.0,
-                    "exec_penalty": -0.5,
-                    "schema_bonus": 0.2,
-                    "base_execution_reward": 0.5,
-                    "test_suite_reward": 0.5,
-                },
-            }
-
-        if isinstance(config, dict):
-            self.cfg: DictConfig = OmegaConf.create(config)
+        default_config = {
+            "float_tolerance": 1e-4,
+            "use_test_suite": True,
+            "num_mutations": 4,
+            "weights": {
+                "syntax_penalty": -1.0,
+                "exec_penalty": -0.5,
+                "schema_bonus": 0.2,
+                "base_execution_reward": 0.5,
+                "test_suite_reward": 0.5,
+            },
+        }
+        base_cfg = OmegaConf.create(default_config)
+        if config is not None:
+            user_cfg = OmegaConf.create(config) if isinstance(config, dict) else config
+            self.cfg: DictConfig = cast(DictConfig, OmegaConf.merge(base_cfg, user_cfg))
         else:
-            self.cfg = config
+            self.cfg = base_cfg
 
         self.syntax_validator = SQLSyntaxValidator()
         self.execution_evaluator = ExecutionEquivalenceEvaluator(

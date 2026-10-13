@@ -146,22 +146,31 @@ def load_sft_dataset(
     return Dataset.from_list(records)
 
 
-def extract_sql_from_completion(text: str) -> str:
+def extract_sql_from_completion(text: Any) -> str:
     """Extract SQL query from markdown code block or fallback to raw text.
 
     Args:
-        text: Raw model generation string.
+        text: Raw model generation string or conversational message sequence.
 
     Returns:
         Extracted and stripped SQL query string.
     """
     import re
 
-    match = re.search(r"```sql\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+    raw_str = ""
+    if isinstance(text, list):
+        if text and isinstance(text[-1], dict) and "content" in text[-1]:
+            raw_str = str(text[-1]["content"])
+        else:
+            raw_str = str(text)
+    else:
+        raw_str = str(text)
+
+    match = re.search(r"```sql\s*(.*?)\s*```", raw_str, re.DOTALL | re.IGNORECASE)
     if match:
         return match.group(1).strip()
     # Try generic markdown block
-    generic_match = re.search(r"```\s*(.*?)\s*```", text, re.DOTALL)
+    generic_match = re.search(r"```\s*(.*?)\s*```", raw_str, re.DOTALL)
     if generic_match:
         return generic_match.group(1).strip()
-    return text.strip()
+    return raw_str.strip()
