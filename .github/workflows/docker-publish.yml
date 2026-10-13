@@ -1,0 +1,77 @@
+name: Publish Docker image
+
+on:
+  # Continuously verify that the Docker image builds successfully.
+  # Images are NOT pushed to GHCR for normal main-branch commits.
+  push:
+    branches:
+      - main
+
+  # Publish the Docker image when a GitHub Release is published.
+  release:
+    types:
+      - published
+
+  # Allow manual builds from the GitHub Actions UI.
+  # Manual runs do NOT publish to GHCR.
+  workflow_dispatch:
+
+jobs:
+  docker:
+    name: Build and publish Docker image
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'release'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+
+          tags: |
+            # Semantic version from the GitHub Release tag.
+            #
+            # GitHub Release: v1.2.3
+            # Docker tag:     1.2.3
+            type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
+
+            # Update the "latest" tag for releases.
+            type=raw,value=latest,enable=${{ github.event_name == 'release' }}
+
+            # Always generate an immutable Git SHA tag.
+            #
+            # Example:
+            # sha-6148629
+            type=sha
+
+      - name: Build and publish Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name == 'release' }}
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
