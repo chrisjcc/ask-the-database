@@ -12,7 +12,9 @@ from ask_the_database.rewards.multi_turn_reward import (
 
 def test_single_turn_perfect_answer(sample_sqlite_db: Path) -> None:
     """1-turn perfect answer receives maximum reward (1.0)."""
-    evaluator = MultiTurnRewardEvaluator(OmegaConf.create({"step_penalty": -0.05, "recovery_bonus": 0.3}))
+    evaluator = MultiTurnRewardEvaluator(
+        OmegaConf.create({"step_penalty": -0.05, "recovery_bonus": 0.3})
+    )
 
     gold_sql = "SELECT name FROM users ORDER BY age DESC LIMIT 1;"
     pred_sql = "SELECT name FROM users ORDER BY age DESC LIMIT 1;"
@@ -32,7 +34,9 @@ def test_single_turn_perfect_answer(sample_sqlite_db: Path) -> None:
 
 def test_three_turn_answer_with_recovery_bonus(sample_sqlite_db: Path) -> None:
     """3-turn trajectory recovering from a syntax error receives discount + recovery bonus."""
-    evaluator = MultiTurnRewardEvaluator(OmegaConf.create({"step_penalty": -0.05, "recovery_bonus": 0.3}))
+    evaluator = MultiTurnRewardEvaluator(
+        OmegaConf.create({"step_penalty": -0.05, "recovery_bonus": 0.3})
+    )
 
     gold_sql = "SELECT name FROM users ORDER BY age DESC LIMIT 1;"
     db_path = str(sample_sqlite_db)
@@ -86,7 +90,9 @@ def test_three_turn_answer_with_recovery_bonus(sample_sqlite_db: Path) -> None:
 
 def test_three_turn_answer_without_error_has_no_recovery_bonus(sample_sqlite_db: Path) -> None:
     """3-turn trajectory with clean tool calls receives discount but NO recovery bonus."""
-    evaluator = MultiTurnRewardEvaluator(OmegaConf.create({"step_penalty": -0.05, "recovery_bonus": 0.3}))
+    evaluator = MultiTurnRewardEvaluator(
+        OmegaConf.create({"step_penalty": -0.05, "recovery_bonus": 0.3})
+    )
 
     gold_sql = "SELECT name FROM users ORDER BY age DESC LIMIT 1;"
     db_path = str(sample_sqlite_db)

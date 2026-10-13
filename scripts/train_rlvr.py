@@ -78,13 +78,17 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                     assert not done1
 
                     # Turn 2: final answer
-                    _, r2, done2, _ = env.step('<final_answer>SELECT COUNT(*) FROM test_table;</final_answer>')
+                    _, r2, done2, _ = env.step(
+                        "<final_answer>SELECT COUNT(*) FROM test_table;</final_answer>"
+                    )
                     assert done2
 
                     rollout_rewards.append(r2)
 
                 # Compute group-normalized relative advantage
-                advantages = compute_group_normalized_rewards(rollout_rewards, group_size=num_rollouts)
+                advantages = compute_group_normalized_rewards(
+                    rollout_rewards, group_size=num_rollouts
+                )
                 mean_reward = sum(rollout_rewards) / len(rollout_rewards)
 
                 telemetry["episodes_completed"] += 1

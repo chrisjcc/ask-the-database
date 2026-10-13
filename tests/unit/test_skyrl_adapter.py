@@ -66,7 +66,7 @@ def test_skyrl_env_multiturn_interaction_and_final_answer(sample_sqlite_db: Path
 
     # Step 4: final answer
     obs4, r4, done4, info4 = env.step(
-        '<final_answer>SELECT name FROM users ORDER BY age DESC LIMIT 1;</final_answer>'
+        "<final_answer>SELECT name FROM users ORDER BY age DESC LIMIT 1;</final_answer>"
     )
     assert done4
     assert env.current_turn == 4
@@ -111,9 +111,7 @@ def test_skyrl_env_action_parsing_variants(sample_sqlite_db: Path) -> None:
     assert pay1 == "SELECT 1;"
 
     # Extra whitespaces inside tags
-    act2, pay2 = env._parse_action(
-        "<tool    name=\"sample_data\"   >   orders   </tool>"
-    )
+    act2, pay2 = env._parse_action('<tool    name="sample_data"   >   orders   </tool>')
     assert act2 == "sample_data"
     assert pay2 == "orders"
 

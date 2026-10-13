@@ -12,7 +12,9 @@ def _get_db_snapshot(db_path: Path) -> dict[str, list[tuple]]:
     """Capture a snapshot of all table contents in the database."""
     conn = sqlite3.connect(str(db_path))
     cursor = conn.cursor()
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';"
+    )
     tables = [r[0] for r in cursor.fetchall()]
     snapshot = {}
     for table in tables:
@@ -80,18 +82,14 @@ def test_full_multiturn_agentic_trajectory(sample_sqlite_db: Path) -> None:
     assert info["action"] == "sample_data"
 
     # Turn 3: Run trial query
-    obs, r3, done, info = env.step(
-        f'<tool name="execute_sql">{gold_sql}</tool>'
-    )
+    obs, r3, done, info = env.step(f'<tool name="execute_sql">{gold_sql}</tool>')
     assert not done
     assert env.current_turn == 3
     assert "Success: 2 rows returned" in obs
     assert info["action"] == "execute_sql"
 
     # Turn 4: Final Answer
-    obs, r4, done, info = env.step(
-        f"<final_answer>{gold_sql}</final_answer>"
-    )
+    obs, r4, done, info = env.step(f"<final_answer>{gold_sql}</final_answer>")
     assert done
     assert env.current_turn == 4
     assert info["is_terminal"] is True
@@ -170,7 +168,9 @@ def test_multiturn_security_mutation_defense(sample_sqlite_db: Path) -> None:
     )
 
     # Attempt mutation
-    obs, r1, done, info = env.step('<tool name="execute_sql">DELETE FROM users WHERE age < 30;</tool>')
+    obs, r1, done, info = env.step(
+        '<tool name="execute_sql">DELETE FROM users WHERE age < 30;</tool>'
+    )
     assert not done
     assert "Database Error" in obs
     assert "Prohibited SQL" in obs or "Security" in obs or "readonly" in obs or "DELETE" in obs
