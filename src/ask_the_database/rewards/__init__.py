@@ -5,6 +5,7 @@ from ask_the_database.rewards.execution_reward import (
     ExecutionEquivalenceEvaluator,
     ExecutionEquivalenceResult,
 )
+from ask_the_database.rewards.multi_turn_reward import MultiTurnRewardEvaluator
 from ask_the_database.rewards.rubric import RewardOutput, SQLRewardRubric
 from ask_the_database.rewards.syntax_reward import (
     SQLSyntaxValidator,
@@ -16,6 +17,7 @@ __all__ = [
     "DiagnosticPayload",
     "ExecutionEquivalenceEvaluator",
     "ExecutionEquivalenceResult",
+    "MultiTurnRewardEvaluator",
     "RewardOutput",
     "SQLRewardRubric",
     "SQLSyntaxValidator",
