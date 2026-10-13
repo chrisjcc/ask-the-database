@@ -96,6 +96,10 @@ class SchemaManager:
             rows = cursor.fetchall()
             return "\n\n".join(row[0] for row in rows if row[0])
 
+    def get_table_ddl(self, table_name: str) -> str:
+        """Return DDL for a single table."""
+        return self.get_raw_ddl(table_name)
+
     def get_schema_summary(self) -> str:
         """Generate a formatted schema representation suitable for LLM prompts."""
         tables = self.get_tables()
