@@ -1,0 +1,6 @@
+dataset_name: "spider"
+hf_dataset_repo: "xlangai/spider"
+hf_database_repo: "seeklhy/OmniSQL-datasets"
+train_split: "train"
+validation_split: "validation"
+max_tokens: 2048

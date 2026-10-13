@@ -1,0 +1,17 @@
+type: "sqlite"
+timeout_seconds: 3.0
+memory_limit_mb: 512
+max_result_rows: 500
+read_only: true
+enforce_ast_safety: true
+forbidden_tokens:
+  - "DROP"
+  - "DELETE"
+  - "INSERT"
+  - "UPDATE"
+  - "ALTER"
+  - "CREATE"
+  - "ATTACH"
+  - "DETACH"
+  - "REINDEX"
+  - "VACUUM"
