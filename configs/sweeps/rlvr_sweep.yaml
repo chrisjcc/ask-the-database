@@ -1,0 +1,31 @@
+name: rlvr-sql-bayes-hyperband
+description: >
+  Bayesian hyperparameter sweep for multi-turn SQL RLVR.
+  Searches learning rate, beta penalty, and step discount while maximizing
+  train/test_suite_reward using Hyperband early stopping.
+project: ask-the-database
+program: scripts/train_rlvr.py
+method: bayes
+
+metric:
+  name: train/test_suite_reward
+  goal: maximize
+
+early_terminate:
+  type: hyperband
+  min_iter: 20
+  eta: 3
+
+parameters:
+  learning_rate:
+    distribution: log_uniform_values
+    min: 5.0e-7
+    max: 1.0e-5
+  beta:
+    distribution: uniform
+    min: 0.01
+    max: 0.15
+  step_penalty:
+    distribution: uniform
+    min: -0.10
+    max: -0.01
