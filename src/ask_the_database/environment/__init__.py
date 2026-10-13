@@ -7,12 +7,18 @@ from ask_the_database.environment.sqlite_env import (
     SQLSecurityViolationError,
     SQLTimeoutError,
 )
+from ask_the_database.environment.test_suite_evaluator import (
+    TestSuiteEvaluationResult,
+    TestSuiteEvaluator,
+)
 
 __all__ = [
     "BaseSQLEnvironment",
     "ExecutionResult",
-    "SchemaManager",
-    "SQLiteEnvironment",
     "SQLSecurityViolationError",
     "SQLTimeoutError",
+    "SQLiteEnvironment",
+    "SchemaManager",
+    "TestSuiteEvaluationResult",
+    "TestSuiteEvaluator",
 ]
