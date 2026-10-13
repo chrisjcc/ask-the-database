@@ -15,8 +15,9 @@ PIP := $(if $(wildcard $(VENV)/bin/pip),$(VENV)/bin/pip,pip)
 RUFF := $(if $(wildcard $(VENV)/bin/ruff),$(VENV)/bin/ruff,ruff)
 MYPY := $(if $(wildcard $(VENV)/bin/mypy),$(VENV)/bin/mypy,mypy)
 PYTEST := $(if $(wildcard $(VENV)/bin/pytest),$(VENV)/bin/pytest,pytest)
+DVC := $(if $(wildcard $(VENV)/bin/dvc),$(VENV)/bin/dvc,dvc)
 
-.PHONY: help install lint format test preprocess
+.PHONY: help install lint format test preprocess train-sft
 
 help:
 	@echo "AskTheDatabase - Operational Commands:"
@@ -25,6 +26,7 @@ help:
 	@echo "  make format      Auto-format code via ruff"
 	@echo "  make test        Execute pytest test suite"
 	@echo "  make preprocess  Download datasets and run normalization pipeline"
+	@echo "  make train-sft   Execute SFT warmup training via DVC"
 
 install:
 	$(PIP) install --upgrade pip
@@ -43,3 +45,6 @@ test:
 
 preprocess:
 	$(PYTHON) scripts/preprocess_data.py
+
+train-sft:
+	$(PYTHON) scripts/train_sft.py
