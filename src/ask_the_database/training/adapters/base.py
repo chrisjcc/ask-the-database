@@ -27,9 +27,7 @@ class RolloutBatch:
         """Validate invariant that all parallel sequences have identical length."""
         n = len(self.prompts)
         if not (
-            len(self.completions) == n
-            and len(self.gold_sqls) == n
-            and len(self.db_paths) == n
+            len(self.completions) == n and len(self.gold_sqls) == n and len(self.db_paths) == n
         ):
             raise ValueError(
                 f"Batch lengths mismatch: prompts={len(self.prompts)}, "
