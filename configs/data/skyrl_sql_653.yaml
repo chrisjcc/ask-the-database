@@ -1,0 +1,6 @@
+dataset_name: "skyrl_sql_653"
+hf_dataset_repo: "NovaSky-AI/SkyRL-SQL-653-data-newfmt"
+hf_database_repo: "seeklhy/OmniSQL-datasets"
+train_split: "train"
+validation_split: "validation"
+max_tokens: 2048

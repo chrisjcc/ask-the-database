@@ -1,0 +1,14 @@
+defaults:
+  - environment: sqlite_sandbox
+  - data: spider
+  - _self_
+
+project_name: "ask-the-database"
+seed: 42
+
+paths:
+  root_dir: ${oc.env:PWD}
+  data_dir: ${paths.root_dir}/data
+  raw_dir: ${paths.data_dir}/raw
+  databases_dir: ${paths.data_dir}/databases
+  processed_dir: ${paths.data_dir}/processed
