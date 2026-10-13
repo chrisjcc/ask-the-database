@@ -6,9 +6,12 @@ import sqlite3
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from ask_the_database.environment.sqlite_env import SQLiteEnvironment
-from ask_the_database.rewards.execution_reward import ExecutionEquivalenceEvaluator
+
+if TYPE_CHECKING:
+    pass
 
 
 @dataclass(frozen=True)
@@ -27,9 +30,14 @@ class TestSuiteEvaluator:
 
     __test__ = False
 
-    def __init__(self, num_mutations: int = 4) -> None:
+    def __init__(self, num_mutations: int = 4, comparator: Any = None) -> None:
         self.num_mutations = num_mutations
-        self.comparator = ExecutionEquivalenceEvaluator()
+        if comparator is None:
+            from ask_the_database.rewards.execution_reward import ExecutionEquivalenceEvaluator
+
+            self.comparator = ExecutionEquivalenceEvaluator()
+        else:
+            self.comparator = comparator
 
     def _create_mutated_clone(self, base_db_path: str, mutation_type: int) -> str:
         """Create an ephemeral SQLite database clone with specific data mutations."""
