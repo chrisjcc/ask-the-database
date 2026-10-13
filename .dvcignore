@@ -1,0 +1,7 @@
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+data/raw/
+__pycache__/
+*.pyc
+.DS_Store

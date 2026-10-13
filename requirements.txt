@@ -8,6 +8,7 @@ datasets>=3.0.0
 huggingface-hub>=0.25.0
 python-dotenv>=1.0.1
 tqdm>=4.66.0
+dvc>=3.50.0
 
 # Development and Testing Dependencies
 pytest>=8.0.0
