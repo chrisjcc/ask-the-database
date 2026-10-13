@@ -1,0 +1,7 @@
+preprocess:
+  dataset_name: "spider"
+  include_skyrl_653: true
+  max_tokens: 2048
+  train_split: 0.9
+  val_split: 0.1
+  seed: 42

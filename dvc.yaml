@@ -1,0 +1,15 @@
+stages:
+  preprocess:
+    cmd: python scripts/preprocess_data.py
+    deps:
+      - scripts/preprocess_data.py
+      - src/ask_the_database/data/preprocessor.py
+      - src/ask_the_database/data/downloader.py
+      - configs/data/spider.yaml
+    params:
+      - preprocess.dataset_name
+      - preprocess.include_skyrl_653
+      - preprocess.seed
+    outs:
+      - data/processed/train.jsonl
+      - data/processed/val.jsonl
