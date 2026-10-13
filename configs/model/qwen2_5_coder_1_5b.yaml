@@ -1,0 +1,5 @@
+name: "Qwen/Qwen2.5-Coder-1.5B-Instruct"
+torch_dtype: "bfloat16"
+trust_remote_code: true
+max_seq_length: 2048
+attn_implementation: "sdpa"

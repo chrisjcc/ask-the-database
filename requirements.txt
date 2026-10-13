@@ -10,6 +10,13 @@ python-dotenv>=1.0.1
 tqdm>=4.66.0
 dvc>=3.50.0
 
+# Training Dependencies
+torch>=2.2.0
+transformers>=4.40.0
+peft>=0.10.0
+trl>=0.8.0
+accelerate>=0.28.0
+
 # Development and Testing Dependencies
 pytest>=8.0.0
 pytest-cov>=4.1.0
