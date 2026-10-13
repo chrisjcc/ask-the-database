@@ -13,6 +13,7 @@ def test_slurm_scripts_exist_and_pass_syntax() -> None:
         "03_rlvr_train.slurm",
         "04_sweep_array.slurm",
         "05_evaluate.slurm",
+        "06_demo_tunnel.slurm",
     ]
 
     for script_name in expected_scripts:

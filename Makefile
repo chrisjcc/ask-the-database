@@ -33,13 +33,13 @@ install:
 	$(PIP) install -e ".[dev]"
 
 lint:
-	$(RUFF) check src/ scripts/ tests/
-	$(RUFF) format --check src/ scripts/ tests/
+	$(RUFF) check src/ scripts/ tests/ app/
+	$(RUFF) format --check src/ scripts/ tests/ app/
 	$(MYPY) src/
 
 format:
-	$(RUFF) check --fix src/ scripts/ tests/
-	$(RUFF) format src/ scripts/ tests/
+	$(RUFF) check --fix src/ scripts/ tests/ app/
+	$(RUFF) format src/ scripts/ tests/ app/
 
 test:
 	$(PYTEST) tests/

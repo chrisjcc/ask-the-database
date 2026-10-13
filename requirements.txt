@@ -17,6 +17,10 @@ peft>=0.10.0
 trl>=0.8.0
 accelerate>=0.28.0
 
+# UI Dependencies
+streamlit>=1.32.0
+pandas>=2.0.0
+
 # Development and Testing Dependencies
 pytest>=8.0.0
 pytest-cov>=4.1.0
