@@ -64,3 +64,28 @@ def test_demo_tunnel_slurm_script() -> None:
     # Check bash syntax
     proc = subprocess.run(["bash", "-n", str(tunnel_script)], capture_output=True, text=True)
     assert proc.returncode == 0, f"Syntax error in 06_demo_tunnel.slurm: {proc.stderr}"
+
+
+def test_deployment_artifacts_exist() -> None:
+    """Verify Dockerfile, HF Space readme, and workflow configuration files."""
+    dockerfile = Path("Dockerfile")
+    assert dockerfile.exists()
+    dockerfile_content = dockerfile.read_text(encoding="utf-8")
+    assert "streamlit" in dockerfile_content
+    assert "app/app.py" in dockerfile_content
+
+    app_req = Path("app/requirements.txt")
+    assert app_req.exists()
+    assert "streamlit" in app_req.read_text(encoding="utf-8")
+
+    space_readme = Path(".github/hf_space_readme.md")
+    assert space_readme.exists()
+    content = space_readme.read_text(encoding="utf-8")
+    assert "sdk: docker" in content
+    assert "app_port: 8501" in content
+
+    hf_deploy_wf = Path(".github/workflows/deploy-hf-demo.yml")
+    assert hf_deploy_wf.exists()
+
+    docker_wf = Path(".github/workflows/docker-publish.yml")
+    assert docker_wf.exists()
