@@ -5,3 +5,9 @@ preprocess:
   train_split: 0.9
   val_split: 0.1
   seed: 42
+
+sft:
+  learning_rate: 2.0e-5
+  num_train_epochs: 3
+  lora:
+    r: 16

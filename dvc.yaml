@@ -13,3 +13,20 @@ stages:
     outs:
       - data/processed/train.jsonl
       - data/processed/val.jsonl
+
+  train-sft:
+    cmd: python scripts/train_sft.py
+    deps:
+      - data/processed/train.jsonl
+      - data/processed/val.jsonl
+      - configs/training/sft.yaml
+      - configs/model/qwen2_5_coder_7b.yaml
+      - scripts/train_sft.py
+      - src/ask_the_database/training/sft_trainer.py
+      - src/ask_the_database/training/dataset.py
+    params:
+      - sft.learning_rate
+      - sft.num_train_epochs
+      - sft.lora.r
+    outs:
+      - models/sft/final
