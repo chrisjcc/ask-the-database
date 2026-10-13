@@ -1,0 +1,70 @@
+Created nl2sql_post_training_architecture_plan.md
+
+I have drafted and saved the complete, end-to-end architectural blueprint and implementation plan directly into an artifact document:
+
+👉 **[nl2sql_post_training_architecture_plan.md](file:///Users/christiancontrerascampana/.gemini/antigravity/brain/e9522030-cfe4-401c-b3d1-c2cce9f03248/nl2sql_post_training_architecture_plan.md)**
+
+---
+
+### Highlights of What Has Been Designed
+1. **Single Source of Truth (SSoT) Matrix**: Explicitly defines non-overlapping boundaries across `Makefile`, Hydra (`configs/`), DVC (`dvc.yaml`), W&B/Weave sweeps, `pyproject.toml`, and `requirements.txt`. Eliminates dual-parameter declaration and CLI overriding bugs.
+2. **Framework-Independent Scientific Core**: Decouples the database sandbox (`src/ask_before_sql/environment/`) and the multi-tier reward engine (`src/ask_before_sql/rewards/`) from any specific RL library. Uses a clean **Adapter Pattern** to isolate SkyRL / SkyRL-Agent, veRL, NeMo RL, or TRL.
+3. **Hierarchical Verifiable Reward Rubric**:
+   - **Tier 1 (Syntax/Parse)**: `sqlglot` validation.
+   - **Tier 2 (Schema Linking)**: Detection of hallucinated tables/columns.
+   - **Tier 3 (Execution Equivalence - EX)**: Strict set/bag comparison against gold standard results.
+   - **Tier 4 (Test-Suite Equivalence - TS)**: Multi-state database mutation to eliminate "right answer for the wrong reason" false positives.
+   - **Tier 5 (Multi-Turn Exploration)**: Step-budget penalties and error-recovery bonuses.
+4. **Data-Efficient Multi-Turn Agent Loop (SkyRL Alignment)**: Implements schema probing (`inspect_schema`), data sampling (`sample_data`), and trial execution (`execute_sql`) across successive turns using the curated **653-sample** dataset (`NovaSky-AI/SkyRL-SQL-653-data-newfmt`) and evaluation against Spider, Spider-DK, Spider-Syn, and Spider-Realistic.
+5. **HPC & Slurm Parity**: Preserves all AskBeforeAnswer defensive patterns (`PYTHONNOUSERSITE=1`, `$CONDA_PREFIX/lib`, `cd "${SLURM_SUBMIT_DIR}"`, sequential `%1` array sweeps to preserve Bayesian optimization history).
+6. **25-Issue Phased Roadmap**: Granularly broken into 5 Epics ready to be imported directly into GitHub Issues.
+
+---
+
+### Key Decisions for Your Input Before Converting to GitHub Issues
+1. **Target Backbone Model**: Do you want to default to `Qwen/Qwen2.5-Coder-7B-Instruct` as the primary base model (leveraging its pre-trained code/SQL priors), or would you prefer evaluating alongside `deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct`?
+2. **Primary RL Framework Priority**: Should **SkyRL-Agent** be implemented as Adapter #1 (leveraging its native multi-turn agentic rollout architecture), with a fallback to **Hugging Face TRL (GRPO)** for quick single-turn local debugging?
+3. **Test-Suite Generation Engine**: For Tier 4 test-suite mutation, do you prefer pre-generating the mutated database states during the DVC `preprocess` stage, or mutating them dynamically in-memory using an ephemeral SQLite connection pool during reward scoring?
+
+---
+
+### Complete Implementation Documentation Suite
+
+| Phase | Focus Area | Artifact Link |
+| :--- | :--- | :--- |
+| **Blueprint** | Full System Architecture & SSoT Matrix | [nl2sql_post_training_architecture_plan.md](file:///Users/christiancontrerascampana/.gemini/antigravity/brain/e9522030-cfe4-401c-b3d1-c2cce9f03248/nl2sql_post_training_architecture_plan.md) |
+| **Phase 1** | Repo Foundation, SSoT, DVC & SQLite Sandbox *(Issues #1–#5)* | [ask_the_database_phase1_implementation_plan.md](file:///Users/christiancontrerascampana/.gemini/antigravity/brain/e9522030-cfe4-401c-b3d1-c2cce9f03248/ask_the_database_phase1_implementation_plan.md) |
+| **Phase 2** | Verifiable Rewards & Test-Suite (TS) Verification *(Issues #6–#10)* | [ask_the_database_phase2_implementation_plan.md](file:///Users/christiancontrerascampana/.gemini/antigravity/brain/e9522030-cfe4-401c-b3d1-c2cce9f03248/ask_the_database_phase2_implementation_plan.md) |
+| **Phase 3** | SFT Warmup Pipeline & Framework Adapters *(Issues #11–#15)* | [ask_the_database_phase3_implementation_plan.md](file:///Users/christiancontrerascampana/.gemini/antigravity/brain/e9522030-cfe4-401c-b3d1-c2cce9f03248/ask_the_database_phase3_implementation_plan.md) |
+| **Phase 4** | Multi-Turn Agent Loop & SkyRL-Agent Environment *(Issues #16–#20)* | [ask_the_database_phase4_implementation_plan.md](file:///Users/christiancontrerascampana/.gemini/antigravity/brain/e9522030-cfe4-401c-b3d1-c2cce9f03248/ask_the_database_phase4_implementation_plan.md) |
+| **Phase 5** | Benchmarks, Sweeps, Slurm Deployment & UI *(Issues #21–#25)* | [ask_the_database_phase5_implementation_plan.md](file:///Users/christiancontrerascampana/.gemini/antigravity/brain/e9522030-cfe4-401c-b3d1-c2cce9f03248/ask_the_database_phase5_implementation_plan.md) |
+
+---
+
+### What Was Engineered in Phases 2 through 5
+
+1. **Phase 2 (Verifiable Reward Engine & TS Mutation)**:
+   - **AST Validation**: Implemented `sqlglot` dialect parser checking for valid `SELECT`/`WITH` projections and extracting table/column tokens.
+   - **Execution Equivalence (EX)**: Multiset (bag) comparator with float tolerance ($\epsilon = 10^{-4}$), null handling, and order-agnostic matching.
+   - **Test-Suite Engine (TS)**: Ephemeral SQLite database perturbation engine creating 4 mutated states (row drop, null injection, duplicate row, numeric boundary shift) to mathematically eliminate "right answer for the wrong reason" false positives.
+   - **Hierarchical Rubric**: Guarantees that queries failing execution can never receive a net positive reward ($> 0.0$).
+
+2. **Phase 3 (SFT Warmup & Framework Adapters)**:
+   - **`BaseRLAdapter`**: Decouples the training framework from the core scientific code.
+   - **SFT Pipeline**: QLoRA fine-tuning on `Qwen2.5-Coder-7B-Instruct` using ChatML formatting to prevent early RL exploration collapse.
+   - **TRL GRPO Adapter**: Baseline single-turn policy optimization for local verification.
+   - **Portability Test**: 50-sample regression test verifying deterministic reward assignment.
+
+3. **Phase 4 (Multi-Turn Agent & SkyRL)**:
+   - **Interactive MDP & Tool Registry**: 4 discrete actions (`inspect_schema`, `sample_data`, `execute_sql`, `final_answer`).
+   - **SkyRL-Gym Adapter**: Wraps the SQLite sandbox into a Gymnasium-compatible environment for SkyRL-Agent rollouts.
+   - **Turn Dynamics**: Step discount ($-0.05 \times t$) combined with a $+0.3$ recovery bonus for self-correcting after database error feedback.
+
+4. **Phase 5 (Benchmarks, Sweeps, Slurm & UI)**:
+   - **Comprehensive Evaluation**: Automated testing across Spider, Spider-DK, Spider-Syn, and Spider-Realistic, measuring TS, EX, VA, and MRR.
+   - **Weave Logging & Reports**: Trajectory graph tracing and automatic generation of `docs/ablation_report.md`.
+   - **Throttled Bayesian Sweeps**: Slurm Arrays with `%1` sequential scheduling to preserve Gaussian Process learning and bypass 24h limits.
+   - **Interactive Streamlit UI**: Browser playground with schema DDL explorer, live query runner, and SSH tunneling scripts.
+
+---
+
