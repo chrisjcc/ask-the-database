@@ -1,0 +1,14 @@
+model_path: "models/rlvr/final"
+benchmarks:
+  - "spider_dk"
+  - "spider_syn"
+  - "spider_realistic"
+max_samples: null
+max_turns: 5
+output_dir: "results"
+summary_file: "results/evaluation_summary.json"
+metrics:
+  - ts
+  - ex
+  - va
+  - mrr
