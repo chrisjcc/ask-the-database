@@ -16,7 +16,7 @@ class SchemaManager:
     def _get_connection(self) -> sqlite3.Connection:
         """Create a read-only SQLite connection for schema inspection."""
         uri = f"file:{self.db_path}?mode=ro"
-        conn = sqlite3.connect(uri, uri=True, timeout=5.0)
+        conn = sqlite3.connect(uri, uri=True, check_same_thread=False, timeout=5.0)
         conn.execute("PRAGMA query_only = ON;")
         return conn
 

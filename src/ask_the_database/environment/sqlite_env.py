@@ -119,9 +119,9 @@ class SQLiteEnvironment(BaseSQLEnvironment):
         expr = expressions[0]
 
         # Verify root statement is a read-only query
-        if not isinstance(expr, (exp.Select, exp.Union)):
+        if not isinstance(expr, (exp.Query, exp.Select, exp.Union, exp.Intersect, exp.Except)):
             raise SQLSecurityViolationError(
-                f"Prohibited SQL statement type: {type(expr).__name__}. Only SELECT queries are permitted."
+                f"Prohibited SQL statement type: {type(expr).__name__}. Only read-only queries are permitted."
             )
 
         # Walk AST to detect any nested mutation nodes
@@ -134,7 +134,12 @@ class SQLiteEnvironment(BaseSQLEnvironment):
     def _open_read_only_connection(self) -> sqlite3.Connection:
         """Create a connection in URI read-only mode with query_only pragma."""
         uri = f"file:{self.db_path}?mode=ro"
-        conn = sqlite3.connect(uri, uri=True, timeout=self.timeout_seconds)
+        conn = sqlite3.connect(
+            uri,
+            uri=True,
+            check_same_thread=False,
+            timeout=self.timeout_seconds,
+        )
         conn.execute("PRAGMA query_only = ON;")
         return conn
 
