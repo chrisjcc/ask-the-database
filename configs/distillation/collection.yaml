@@ -1,0 +1,37 @@
+# Trajectory Collection Configuration for Harness-Zero Distillation
+# Collects reviewed trajectories across 500 stratified Spider training tasks
+
+collection:
+  raw_spider_path: "data/raw/spider_data/train_spider.json"
+  processed_train_path: "data/processed/train.jsonl"
+  databases_dir: "data/databases"
+  output_path: "data/distillation/reviewed_trajectories.jsonl"
+  metrics_output_path: "data/distillation/collection_metrics.json"
+
+stratification:
+  n_medium: 150
+  n_hard: 200
+  n_extra: 150
+  seed: 42
+
+harness:
+  rules_config: "configs/distillation/k_sql_rules.yaml"
+  max_turns: 5
+  step_penalty: -0.05
+  require_success: true
+
+student:
+  backend: "mock" # "mock", "hf", "litellm"
+  model_name: "Qwen/Qwen2.5-Coder-7B-Instruct"
+  temperature: 0.0
+  max_new_tokens: 512
+
+teacher:
+  backend: "rule" # "rule", "litellm", "mock"
+  model_name: "anthropic/claude-3-5-sonnet-20241022"
+  temperature: 0.0
+  max_interventions: 3
+  privacy_enforcement: true
+
+dry_run: false
+max_samples: null
