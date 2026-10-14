@@ -1,0 +1,51 @@
+# K_SQL: Procedural Reference Harness Configuration for NL2SQL Agent Distillation
+# Inspired by Ye et al. (2026) Harness-Zero (arXiv:2609.24974)
+
+reference_harness:
+  version: "1.0.0"
+  domain: "nl2sql"
+  description: "Procedural rules enforcing schema grounding, row sampling, dry-runs, and error recovery"
+
+rules:
+  require_schema_inspection:
+    enabled: true
+    priority: 100
+    description: "Intercept candidate queries referencing tables whose schema DDL has not been inspected via inspect_schema."
+    trigger_actions:
+      - "execute_sql"
+      - "final_answer"
+    replacement_action: "inspect_schema"
+
+  require_row_sampling:
+    enabled: true
+    priority: 80
+    description: "Intercept queries containing string/categorical equality or pattern filters if table data has not been sampled."
+    trigger_actions:
+      - "execute_sql"
+      - "final_answer"
+    replacement_action: "sample_data"
+
+  enforce_dry_run_before_finish:
+    enabled: true
+    priority: 90
+    description: "Intercept premature final_answer submissions if the query has not been successfully executed via execute_sql."
+    trigger_actions:
+      - "final_answer"
+    replacement_action: "execute_sql"
+
+  diagnostic_recovery:
+    enabled: true
+    priority: 110
+    description: "Intercept repeated queries or unrecovered errors following SQLite operational/syntax errors."
+    trigger_actions:
+      - "execute_sql"
+      - "final_answer"
+    replacement_action: "inspect_schema"
+
+teacher:
+  model_name: "anthropic/claude-3-5-sonnet-20241022"
+  temperature: 0.0
+  max_tokens: 1024
+  max_interventions_per_episode: 3
+  privacy_enforcement: true
+  allow_rule_based_fallback: true
