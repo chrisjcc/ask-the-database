@@ -17,16 +17,21 @@ MYPY := $(if $(wildcard $(VENV)/bin/mypy),$(VENV)/bin/mypy,mypy)
 PYTEST := $(if $(wildcard $(VENV)/bin/pytest),$(VENV)/bin/pytest,pytest)
 DVC := $(if $(wildcard $(VENV)/bin/dvc),$(VENV)/bin/dvc,dvc)
 
-.PHONY: help install lint format test preprocess train-sft
+.PHONY: help install lint format test preprocess train-sft train-grpo collect-distillation train-harness-zero evaluate evaluate-mve
 
 help:
 	@echo "AskTheDatabase - Operational Commands:"
-	@echo "  make install     Install production & development dependencies"
-	@echo "  make lint        Run ruff linter and mypy type checks"
-	@echo "  make format      Auto-format code via ruff"
-	@echo "  make test        Execute pytest test suite"
-	@echo "  make preprocess  Download datasets and run normalization pipeline"
-	@echo "  make train-sft   Execute SFT warmup training via DVC"
+	@echo "  make install              Install production & development dependencies"
+	@echo "  make lint                 Run ruff linter and mypy type checks"
+	@echo "  make format               Auto-format code via ruff"
+	@echo "  make test                 Execute pytest test suite"
+	@echo "  make preprocess           Download datasets and run normalization pipeline"
+	@echo "  make train-sft            Execute SFT warmup training on base model"
+	@echo "  make train-grpo           Execute multi-turn GRPO / RLVR training"
+	@echo "  make collect-distillation Collect K_SQL reviewed trajectories for Harness-Zero"
+	@echo "  make train-harness-zero   Train SFT on K_SQL reviewed trajectories"
+	@echo "  make evaluate             Evaluate benchmark suites (Spider, DK, Syn, Realistic)"
+	@echo "  make evaluate-mve         Adjudicate 4-condition MVE decision gates & publish report"
 
 install:
 	$(PIP) install --upgrade pip
@@ -49,3 +54,18 @@ preprocess:
 
 train-sft:
 	$(PYTHON) scripts/train_sft.py
+
+train-grpo:
+	$(PYTHON) scripts/train_rlvr.py
+
+collect-distillation:
+	$(PYTHON) scripts/collect_reviewed_trajectories.py
+
+train-harness-zero:
+	$(PYTHON) scripts/train_sft.py training.dataset_path=data/distillation/reviewed_trajectories.jsonl training.output_dir=models/sft/harness_zero
+
+evaluate:
+	$(PYTHON) scripts/evaluate_benchmark.py
+
+evaluate-mve:
+	$(PYTHON) scripts/run_mve_evaluation.py
