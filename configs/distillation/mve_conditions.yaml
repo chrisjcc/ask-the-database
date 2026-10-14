@@ -1,0 +1,74 @@
+# Configuration for 4-Condition Minimum Viable Experiment (MVE)
+# Part of Sub-Issue #63 & Epic #60
+
+experiment:
+  name: "harness_zero_mve"
+  version: "1.0.0"
+  description: "Controlled 4-condition comparison evaluating Agent-as-Harness distillation on Spider Dev and Spider-Realistic"
+
+conditions:
+  condition_1_base_student:
+    id: 1
+    name: "Base Student (Zero-Shot)"
+    model_name_or_path: "Qwen/Qwen2.5-Coder-7B-Instruct"
+    harness: "target_h"
+    description: "Unguided base student evaluated directly under DatabaseToolRegistry."
+    training_data: null
+    epochs: 0
+
+  condition_2_conventional_sft:
+    id: 2
+    name: "Conventional SFT Baseline"
+    model_name_or_path: "models/mve/sft_baseline"
+    harness: "target_h"
+    description: "SFT on 500 gold-standard single-turn / static multi-turn Spider queries."
+    training_data: "data/distillation/sft_baseline_demonstrations.jsonl"
+    epochs: 2
+
+  condition_3_filtered_rollouts:
+    id: 3
+    name: "Successful-Rollout Filtering Baseline (Rejection Sampling)"
+    model_name_or_path: "models/mve/filtered_rollouts"
+    harness: "target_h"
+    description: "SFT on self-generated student rollouts filtered for Test-Suite Correctness (TS = 1.0)."
+    training_data: "data/distillation/filtered_rollouts.jsonl"
+    epochs: 2
+
+  condition_4_harness_zero:
+    id: 4
+    name: "Harness-Zero SFT (Proposed)"
+    model_name_or_path: "models/mve/harness_zero"
+    harness: "target_h"
+    description: "SFT on on-policy student rollouts reviewed and minimally corrected via K_SQL."
+    training_data: "data/distillation/reviewed_trajectories.jsonl"
+    epochs: 2
+
+evaluation:
+  splits:
+    spider_dev:
+      name: "Spider Standard Dev"
+      path: "data/raw/spider_data/dev.json"
+      unseen_databases: true
+      num_queries: 1034
+    spider_realistic:
+      name: "Spider-Realistic"
+      path: "data/evaluation/spider_realistic.json"
+      unseen_databases: true
+      num_queries: 508
+  metrics:
+    - "test_suite_correctness"
+    - "execution_accuracy"
+    - "valid_sql"
+    - "error_recovery_rate"
+    - "average_turns"
+    - "average_latency_ms"
+
+decision_gates:
+  primary_ts_gain_vs_cond2: 5.0 # >= +5.0 pp TS over Condition 2
+  primary_ts_gain_vs_cond3: 3.0 # >= +3.0 pp TS over Condition 3
+  behavioral_recovery_rel_gain: 0.20 # >= +20% relative increase in R_rec
+  efficiency_max_turn_delta: 1.5 # <= baseline + 1.5 turns
+
+stop_conditions:
+  cond4_near_cond2_delta: 1.5 # Stop if Cond 4 is within +/- 1.5 pp of Cond 2
+  cond3_matches_cond4: true # Stop if filtered rollouts match Harness-Zero
