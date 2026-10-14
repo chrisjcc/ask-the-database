@@ -28,7 +28,9 @@ student:
 
 teacher:
   backend: "rule" # "rule", "litellm", "mock"
-  model_name: "anthropic/claude-3-5-sonnet-20241022"
+  # Default: Google Gemini 2.0 Flash (Free tier on Google AI Studio via GEMINI_API_KEY)
+  # Alternative: "anthropic/claude-3-5-sonnet-20241022", "openai/gpt-4o"
+  model_name: "gemini/gemini-2.0-flash"
   temperature: 0.0
   max_interventions: 3
   privacy_enforcement: true

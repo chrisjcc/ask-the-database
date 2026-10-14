@@ -253,8 +253,8 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--teacher-model",
         type=str,
-        default="anthropic/claude-3-5-sonnet-20241022",
-        help="Teacher model identifier for LiteLLM.",
+        default="gemini/gemini-2.0-flash",
+        help="Teacher model identifier for LiteLLM (default: gemini/gemini-2.0-flash; alt: anthropic/claude-3-5-sonnet-20241022).",
     )
     parser.add_argument(
         "--dry-run",

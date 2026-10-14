@@ -43,7 +43,12 @@ rules:
     replacement_action: "inspect_schema"
 
 teacher:
-  model_name: "anthropic/claude-3-5-sonnet-20241022"
+  # Default: Google Gemini 2.0 Flash (Free tier on Google AI Studio via GEMINI_API_KEY)
+  # Alternative frontier models:
+  #   - "anthropic/claude-3-5-sonnet-20241022"
+  #   - "openai/gpt-4o"
+  #   - "gemini/gemini-1.5-pro"
+  model_name: "gemini/gemini-2.0-flash"
   temperature: 0.0
   max_tokens: 1024
   max_interventions_per_episode: 3
