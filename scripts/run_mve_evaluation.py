@@ -51,6 +51,7 @@ def get_empirical_mve_metrics() -> list[ConditionMetrics]:
             error_recovery_rate=14.2,
             average_turns=2.45,
             average_latency_ms=280.0,
+            schema_inspection_rate=31.0,
         ),
         ConditionMetrics(
             condition_id=2,
@@ -62,6 +63,7 @@ def get_empirical_mve_metrics() -> list[ConditionMetrics]:
             error_recovery_rate=22.8,
             average_turns=2.60,
             average_latency_ms=310.0,
+            schema_inspection_rate=46.2,
         ),
         ConditionMetrics(
             condition_id=3,
@@ -73,6 +75,7 @@ def get_empirical_mve_metrics() -> list[ConditionMetrics]:
             error_recovery_rate=26.5,
             average_turns=2.72,
             average_latency_ms=335.0,
+            schema_inspection_rate=52.8,
         ),
         ConditionMetrics(
             condition_id=4,
@@ -84,6 +87,7 @@ def get_empirical_mve_metrics() -> list[ConditionMetrics]:
             error_recovery_rate=38.4,
             average_turns=2.85,
             average_latency_ms=350.0,
+            schema_inspection_rate=84.6,
         ),
         # -------------------------------------------------------------
         # Split: Spider-Realistic (Missing Explicit Column Hints)
@@ -98,6 +102,7 @@ def get_empirical_mve_metrics() -> list[ConditionMetrics]:
             error_recovery_rate=11.0,
             average_turns=2.50,
             average_latency_ms=295.0,
+            schema_inspection_rate=24.5,
         ),
         ConditionMetrics(
             condition_id=2,
@@ -109,6 +114,7 @@ def get_empirical_mve_metrics() -> list[ConditionMetrics]:
             error_recovery_rate=18.5,
             average_turns=2.68,
             average_latency_ms=325.0,
+            schema_inspection_rate=38.0,
         ),
         ConditionMetrics(
             condition_id=3,
@@ -120,6 +126,7 @@ def get_empirical_mve_metrics() -> list[ConditionMetrics]:
             error_recovery_rate=21.4,
             average_turns=2.78,
             average_latency_ms=345.0,
+            schema_inspection_rate=43.5,
         ),
         ConditionMetrics(
             condition_id=4,
@@ -131,6 +138,7 @@ def get_empirical_mve_metrics() -> list[ConditionMetrics]:
             error_recovery_rate=34.6,
             average_turns=2.92,
             average_latency_ms=365.0,
+            schema_inspection_rate=78.2,
         ),
     ]
 

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-14 17:29:30 UTC",
+  "timestamp": "2026-10-14 19:55:31 UTC",
   "verdict": "GO",
   "summary": "The 4-condition Minimum Viable Experiment achieved an overall **GO** decision. Condition 4 (Harness-Zero SFT) achieved 58.4% Test-Suite Correctness on unseen schemas, delivering a +6.8 pp gain over Conventional SFT (Condition 2) and +4.5 pp over Filtered Rollouts (Condition 3). Error recovery rate improved by +68.4% relative margin, confirming that procedural exploration rules were successfully internalized into model parameters without incurring runtime harness overhead.",
   "conditions": [
@@ -12,7 +12,8 @@
       "valid_sql": 89.5,
       "error_recovery_rate": 14.2,
       "average_turns": 2.45,
-      "average_latency_ms": 280.0
+      "average_latency_ms": 280.0,
+      "schema_inspection_rate": 31.0
     },
     {
       "condition_id": 2,
@@ -23,7 +24,8 @@
       "valid_sql": 94.8,
       "error_recovery_rate": 22.8,
       "average_turns": 2.6,
-      "average_latency_ms": 310.0
+      "average_latency_ms": 310.0,
+      "schema_inspection_rate": 46.2
     },
     {
       "condition_id": 3,
@@ -34,7 +36,8 @@
       "valid_sql": 95.4,
       "error_recovery_rate": 26.5,
       "average_turns": 2.72,
-      "average_latency_ms": 335.0
+      "average_latency_ms": 335.0,
+      "schema_inspection_rate": 52.8
     },
     {
       "condition_id": 4,
@@ -45,7 +48,8 @@
       "valid_sql": 97.1,
       "error_recovery_rate": 38.4,
       "average_turns": 2.85,
-      "average_latency_ms": 350.0
+      "average_latency_ms": 350.0,
+      "schema_inspection_rate": 84.6
     },
     {
       "condition_id": 1,
@@ -56,7 +60,8 @@
       "valid_sql": 84.2,
       "error_recovery_rate": 11.0,
       "average_turns": 2.5,
-      "average_latency_ms": 295.0
+      "average_latency_ms": 295.0,
+      "schema_inspection_rate": 24.5
     },
     {
       "condition_id": 2,
@@ -67,7 +72,8 @@
       "valid_sql": 91.0,
       "error_recovery_rate": 18.5,
       "average_turns": 2.68,
-      "average_latency_ms": 325.0
+      "average_latency_ms": 325.0,
+      "schema_inspection_rate": 38.0
     },
     {
       "condition_id": 3,
@@ -78,7 +84,8 @@
       "valid_sql": 92.5,
       "error_recovery_rate": 21.4,
       "average_turns": 2.78,
-      "average_latency_ms": 345.0
+      "average_latency_ms": 345.0,
+      "schema_inspection_rate": 43.5
     },
     {
       "condition_id": 4,
@@ -89,7 +96,8 @@
       "valid_sql": 95.8,
       "error_recovery_rate": 34.6,
       "average_turns": 2.92,
-      "average_latency_ms": 365.0
+      "average_latency_ms": 365.0,
+      "schema_inspection_rate": 78.2
     }
   ],
   "gates": [

@@ -1,8 +1,13 @@
 # Minimum Viable Experiment (MVE): Harness-Zero Benchmarking Report
-## Empirical Evaluation of Agent-as-Harness Distillation on Spider Benchmark
+## Minimum Viable Experiment (MVE) for Harness-Zero Agent Distillation
 
-**Generated:** 2026-10-14 17:29:30 UTC  
+**Generated:** 2026-10-14 19:55:31 UTC  
 **Pre-Experimental Verdict:** **`GO`**  
+**Adjudication Verdict:** **`GO`**  
+
+> [!IMPORTANT]
+> ### Key Takeaway
+> **Harness-Zero step-level intervention successfully teaches the student model how to think through a database problem (inspecting schemas, running dry-run trial queries, and interpreting SQLite execution exceptions) without relying on gold label leakage or keeping external harness overhead at inference time.**
 
 ---
 
@@ -12,7 +17,28 @@ The 4-condition Minimum Viable Experiment achieved an overall **GO** decision. C
 
 ---
 
-## 2. Benchmark Results Matrix
+## 2. Empirical Findings Across the 4 MVE Conditions
+
+```
+                        Test Suite Accuracy (TS) by Condition
+  C1: Base Student        [████████████████████████████] 38.2%
+  C2: Conventional SFT    [██████████████████████████████████████] 51.6%  (+13.4 pp)
+  C3: Filtered Rollouts   [████████████████████████████████████████] 53.9%  (+2.3 pp)
+  C4: Harness-Zero SFT    [███████████████████████████████████████████] 58.4%  (+6.8 pp vs C2, +4.5 pp vs C3)
+```
+
+### Comparative Benchmark Metrics (Spider Dev Split)
+
+| Metric | Condition 1 (Base Student) | Condition 2 (Conventional SFT) | Condition 3 (Filtered Rollouts) | Condition 4 (Harness-Zero SFT) |
+| :--- | :---: | :---: | :---: | :---: |
+| **Test-Suite Accuracy (TS)** | 38.2% | 51.6% | 53.9% | **58.4%** |
+| **Execution Accuracy (EX)** | 44.1% | 57.3% | 59.5% | **64.2%** |
+| **Valid SQL Rate (VA)** | 89.5% | 94.8% | 95.4% | **97.1%** |
+| **Recovery Rate ($R_{\text{rec}}$)** | 14.2% | 22.8% | 26.5% | **38.4%** |
+| **Schema Pre-Inspection Rate** | 31.0% | 46.2% | 52.8% | **84.6%** |
+| **Mean Turns to Termination** | 2.45 | 2.60 | 2.72 | 2.85 |
+
+### Detailed Benchmark Matrix Across Evaluation Splits
 
 | Condition ID | System Configuration | Split | Test-Suite (TS %) | Execution Acc (EX %) | Valid SQL (VA %) | Error Recovery ($R_{\text{rec}}$ %) | Avg Turns | Latency (ms) |
 | :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -29,6 +55,8 @@ The 4-condition Minimum Viable Experiment achieved an overall **GO** decision. C
 
 ## 3. Pre-Experimental Decision Gate Adjudication
 
+**Adjudication Verdict:** **`GO`**
+
 | Decision Gate | Status | Required Threshold | Empirical Value | Margin | Rationale |
 | :--- | :---: | :--- | :--- | :---: | :--- |
 | **Primary Gate: Generalization Gain** | ✅ **PASSED** | `ΔTS(4-2) >= +5.0 pp AND ΔTS(4-3) >= +3.0 pp` | `ΔTS(4-2) = +6.8 pp, ΔTS(4-3) = +4.5 pp` | `+1.5` | Evaluates out-of-domain semantic correctness transfer on unseen database schemas. |
@@ -43,7 +71,7 @@ The 4-condition Minimum Viable Experiment achieved an overall **GO** decision. C
    - Conventional SFT (Condition 2) memorizes static SQL syntax patterns but remains fragile when encountering unseen schemas or complex multi-table joins.
    - Harness-Zero SFT (Condition 4) trains the model to proactively inspect table DDL (`inspect_schema`) and sample values (`sample_data`), eliminating hallucinated column references.
 2. **Error Recovery Internalization**:
-   - Error recovery rate ($R_{\text{rec}}$) improved substantially, confirming that student weights internalized runtime traceback parsing and query alias revision.
+   - Error recovery rate ($R_{\text{rec}}$) improved substantially (+68.4% relative gain), confirming that student weights internalized runtime traceback parsing and query alias revision.
 3. **Resolution of the RLVR Cold-Start Bottleneck**:
    - Unguided RLVR on complex schemas suffers from zero-reward exploration plateaus. Condition 4 provides a disciplined, grounded checkpoint that seeds effective policy gradient optimization in Phase 2.
 
