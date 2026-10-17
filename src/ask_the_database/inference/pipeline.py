@@ -89,11 +89,14 @@ class NL2SQLPipeline:
             from transformers import AutoModelForCausalLM, AutoTokenizer
 
             assert self.model_path is not None
+            device_target = self.device
+            if device_target == "auto":
+                device_target = "auto" if torch.cuda.is_available() else "cpu"
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, trust_remote_code=True)
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_path,
                 torch_dtype=self.torch_dtype or torch.bfloat16,
-                device_map=self.device if self.device != "auto" else "cpu",
+                device_map=device_target,
                 trust_remote_code=True,
             )
         except Exception:
@@ -104,6 +107,9 @@ class NL2SQLPipeline:
         messages: list[dict[str, str]],
         available_tables: list[str] | None = None,
         default_query: str | None = None,
+        do_sample: bool = False,
+        temperature: float = 0.7,
+        top_p: float = 0.95,
     ) -> str:
         """Generate next agent completion from conversational history."""
         if self.model is not None and self.tokenizer is not None:
@@ -113,12 +119,18 @@ class NL2SQLPipeline:
             inputs = self.tokenizer(prompt, return_tensors="pt")
             if hasattr(self.model, "device"):
                 inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
+            gen_kwargs: dict[str, Any] = {
+                "max_new_tokens": 256,
+                "do_sample": do_sample,
+            }
+            if do_sample:
+                gen_kwargs["temperature"] = max(0.01, float(temperature))
+                gen_kwargs["top_p"] = float(top_p)
+
             with torch.no_grad():
                 outputs = self.model.generate(
                     **inputs,
-                    max_new_tokens=256,
-                    temperature=0.1,
-                    do_sample=False,
+                    **gen_kwargs,
                 )
             decoded = self.tokenizer.decode(
                 outputs[0][inputs["input_ids"].shape[1] :], skip_special_tokens=True

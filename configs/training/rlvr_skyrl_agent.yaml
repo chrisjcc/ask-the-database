@@ -11,6 +11,7 @@ logging_steps: 5
 save_steps: 50
 report_to: "none"
 dry_run: false
+temperature: 0.7
 
 lora:
   r: 16

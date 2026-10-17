@@ -184,10 +184,13 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
             r = 0.0
             while not done:
                 tables = env.registry.schema_manager.get_tables() if env.registry else None
+                sampling_temp = float(getattr(training_cfg, "temperature", 0.7))
                 action = pipeline.generate_step(
                     messages=env.history,
                     available_tables=tables,
                     default_query=instance.get("gold_sql"),
+                    do_sample=True,
+                    temperature=sampling_temp,
                 )
                 _, r, done, _ = env.step(action)
             rollout_rewards.append(r)
