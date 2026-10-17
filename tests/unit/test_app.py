@@ -4,6 +4,13 @@ import ast
 import subprocess
 from pathlib import Path
 
+import pytest
+
+pytest.importorskip(
+    "streamlit",
+    reason="Streamlit is required for app UI tests. Install via 'make install' or 'pip install -e .[all]'.",
+)
+
 from ask_the_database.inference.pipeline import NL2SQLPipeline
 
 
