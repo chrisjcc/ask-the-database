@@ -83,6 +83,10 @@ make train-sft
 ```
 * **Fast dry-run check (verifies configs, tokenizers, and LoRA layers without GPU compute):**
   ```bash
+  # Recommended: via make (automatically enforces environment isolation)
+  make train-sft ARGS="dry_run=true"
+
+  # Or directly via python
   python scripts/train_sft.py dry_run=true
   ```
 * **Resulting Checkpoint:** `models/sft/checkpoint-final`
@@ -98,6 +102,10 @@ make train-grpo
 ```
 * **Fast dry-run check (verifies multi-turn environment stepping and group reward normalization):**
   ```bash
+  # Recommended: via make (automatically enforces environment isolation)
+  make train-grpo ARGS="dry_run=true"
+
+  # Or directly via python
   python scripts/train_rlvr.py dry_run=true
   ```
 * **Resulting Checkpoint:** `models/rlvr/final`
@@ -140,6 +148,10 @@ Fine-tune `Qwen/Qwen2.5-Coder-7B-Instruct` on the collected reviewed trajectorie
 ```bash
 make train-harness-zero
 ```
+* **Fast dry-run check:**
+  ```bash
+  make train-harness-zero ARGS="dry_run=true"
+  ```
 * **Resulting Checkpoint:** `models/sft/harness_zero`
 
 ---
