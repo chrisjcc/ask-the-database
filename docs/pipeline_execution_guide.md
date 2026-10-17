@@ -50,6 +50,9 @@ Populate the required keys in `.env`:
 # Hugging Face token for downloading base models and Spider datasets
 HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxx
 
+# Hugging Face Cache Directory (Essential on HPC clusters to avoid filling ~/.cache / home quota)
+HF_HOME=/data/dust/user/clseitz/.cache/huggingface
+
 # Google AI Studio key for free Gemini 2.0 Flash teacher review (0 token costs)
 GEMINI_API_KEY=AIzaxxxxxxxxxxxxxxxxxxxx
 
@@ -76,15 +79,22 @@ make preprocess
 
 ## 2. Condition 2 Baseline: Conventional SFT on Base Model
 
-Train `Qwen/Qwen2.5-Coder-7B-Instruct` on ground-truth static text-to-SQL pairs using LoRA ($r=16, \alpha=32$) via Hugging Face TRL:
+Train `Qwen/Qwen2.5-Coder-7B-Instruct` (or lightweight `1.5B`) on ground-truth static text-to-SQL pairs using LoRA ($r=16, \alpha=32$) via Hugging Face TRL:
 
 ```bash
+# Default: Qwen2.5-Coder-7B-Instruct (~15.2 GB download)
 make train-sft
+
+# Lightweight alternative: Qwen2.5-Coder-1.5B-Instruct (~3.1 GB download, fast iteration, native SDPA/Triton attention)
+make train-sft ARGS="model=qwen2_5_coder_1_5b"
 ```
 * **Fast dry-run check (verifies configs, tokenizers, and LoRA layers without GPU compute):**
   ```bash
   # Recommended: via make (automatically enforces environment isolation)
   make train-sft ARGS="dry_run=true"
+
+  # Or with the 1.5B model:
+  make train-sft ARGS="model=qwen2_5_coder_1_5b dry_run=true"
 
   # Or directly via python
   python scripts/train_sft.py dry_run=true
