@@ -55,22 +55,22 @@ test:
 	$(PYTEST) tests/
 
 preprocess:
-	$(PYTHON) scripts/preprocess_data.py
+	$(PYTHON) scripts/preprocess_data.py $(ARGS)
 
 train-sft:
-	$(PYTHON) scripts/train_sft.py
+	$(PYTHON) scripts/train_sft.py $(ARGS)
 
 train-grpo:
-	$(PYTHON) scripts/train_rlvr.py
+	$(PYTHON) scripts/train_rlvr.py $(ARGS)
 
 collect-distillation:
-	$(PYTHON) scripts/collect_reviewed_trajectories.py
+	$(PYTHON) scripts/collect_reviewed_trajectories.py $(ARGS)
 
 train-harness-zero:
-	$(PYTHON) scripts/train_sft.py training.dataset_path=data/distillation/reviewed_trajectories.jsonl training.output_dir=models/sft/harness_zero
+	$(PYTHON) scripts/train_sft.py training.dataset_path=data/distillation/reviewed_trajectories.jsonl training.output_dir=models/sft/harness_zero $(ARGS)
 
 evaluate:
-	$(PYTHON) scripts/evaluate_benchmark.py
+	$(PYTHON) scripts/evaluate_benchmark.py $(ARGS)
 
 evaluate-mve:
-	$(PYTHON) scripts/run_mve_evaluation.py
+	$(PYTHON) scripts/run_mve_evaluation.py $(ARGS)

@@ -8,6 +8,7 @@ defaults:
 
 project_name: "ask-the-database"
 seed: 42
+dry_run: false
 
 paths:
   root_dir: ${oc.env:PWD}
