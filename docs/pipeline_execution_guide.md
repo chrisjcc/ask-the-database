@@ -29,8 +29,11 @@ cd ask-the-database
 python3.11 -m venv .venv
 source .venv/bin/activate
 
-# 3. Install AskTheDatabase in editable mode with development dependencies
+# 3. Install AskTheDatabase in editable mode with development and training dependencies
 make install
+
+# Optional (GPU Cluster): If you need a specific CUDA build of PyTorch matching your NVIDIA drivers:
+# pip install torch --index-url https://download.pytorch.org/whl/cu121
 
 # 4. Verify test suite and type safety
 make lint

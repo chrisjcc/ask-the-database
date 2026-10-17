@@ -2,7 +2,13 @@
 
 from pathlib import Path
 
+import pytest
 from omegaconf import OmegaConf
+
+pytest.importorskip(
+    "torch",
+    reason="PyTorch is required for training and adapter tests. Install via 'make install' or 'pip install -e .[training]'.",
+)
 
 from scripts.train_rlvr import run_rlvr_training
 

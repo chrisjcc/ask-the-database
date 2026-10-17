@@ -7,7 +7,13 @@ protecting against framework churn and non-deterministic environment behavior.
 
 from pathlib import Path
 
+import pytest
 from omegaconf import OmegaConf
+
+pytest.importorskip(
+    "torch",
+    reason="PyTorch is required for training and adapter tests. Install via 'make install' or 'pip install -e .[training]'.",
+)
 
 from ask_the_database.rewards.rubric import SQLRewardRubric
 from ask_the_database.training.adapters.base import RolloutBatch

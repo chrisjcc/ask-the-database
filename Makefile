@@ -17,11 +17,13 @@ MYPY := $(if $(wildcard $(VENV)/bin/mypy),$(VENV)/bin/mypy,mypy)
 PYTEST := $(if $(wildcard $(VENV)/bin/pytest),$(VENV)/bin/pytest,pytest)
 DVC := $(if $(wildcard $(VENV)/bin/dvc),$(VENV)/bin/dvc,dvc)
 
-.PHONY: help install lint format test preprocess train-sft train-grpo collect-distillation train-harness-zero evaluate evaluate-mve
+.PHONY: help install install-all install-dev lint format test preprocess train-sft train-grpo collect-distillation train-harness-zero evaluate evaluate-mve
 
 help:
 	@echo "AskTheDatabase - Operational Commands:"
-	@echo "  make install              Install production & development dependencies"
+	@echo "  make install              Install development & training dependencies"
+	@echo "  make install-all          Install all dependencies (dev, training, and UI)"
+	@echo "  make install-dev          Install minimal development dependencies only"
 	@echo "  make lint                 Run ruff linter and mypy type checks"
 	@echo "  make format               Auto-format code via ruff"
 	@echo "  make test                 Execute pytest test suite"
@@ -34,6 +36,14 @@ help:
 	@echo "  make evaluate-mve         Adjudicate 4-condition MVE decision gates & publish report"
 
 install:
+	$(PIP) install --upgrade pip
+	$(PIP) install -e ".[dev,training]"
+
+install-all:
+	$(PIP) install --upgrade pip
+	$(PIP) install -e ".[all]"
+
+install-dev:
 	$(PIP) install --upgrade pip
 	$(PIP) install -e ".[dev]"
 

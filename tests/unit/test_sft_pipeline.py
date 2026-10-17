@@ -6,6 +6,11 @@ from pathlib import Path
 import pytest
 from omegaconf import OmegaConf
 
+pytest.importorskip(
+    "torch",
+    reason="PyTorch is required for training and adapter tests. Install via 'make install' or 'pip install -e .[training]'.",
+)
+
 from ask_the_database.training.dataset import (
     DEFAULT_SYSTEM_PROMPT,
     extract_sql_from_completion,
