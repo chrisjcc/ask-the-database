@@ -61,7 +61,7 @@ train-sft:
 	$(PYTHON) scripts/train_sft.py $(ARGS)
 
 train-grpo:
-	$(PYTHON) scripts/train_rlvr.py $(ARGS)
+	$(PYTHON) scripts/train_rlvr.py training=rlvr_skyrl_agent $(ARGS)
 
 collect-distillation:
 	$(PYTHON) scripts/collect_reviewed_trajectories.py $(ARGS)
