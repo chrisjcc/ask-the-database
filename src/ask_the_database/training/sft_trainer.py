@@ -160,13 +160,19 @@ class SFTWarmupPipeline:
             tokenizer = self.load_tokenizer(model_name)
 
         if train_dataset is None:
-            processed_dir = Path(self.cfg.paths.processed_dir)
-            train_path = processed_dir / "train.jsonl"
+            custom_dataset = getattr(self.cfg.training, "dataset_path", None)
+            train_path = (
+                Path(custom_dataset)
+                if custom_dataset
+                else Path(self.cfg.paths.processed_dir) / "train.jsonl"
+            )
             train_dataset = load_sft_dataset(str(train_path))
 
         if eval_dataset is None:
-            processed_dir = Path(self.cfg.paths.processed_dir)
-            val_path = processed_dir / "val.jsonl"
+            custom_val = getattr(self.cfg.training, "val_dataset_path", None)
+            val_path = (
+                Path(custom_val) if custom_val else Path(self.cfg.paths.processed_dir) / "val.jsonl"
+            )
             if val_path.is_file():
                 eval_dataset = load_sft_dataset(str(val_path))
 

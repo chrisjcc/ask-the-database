@@ -1,4 +1,6 @@
 output_dir: "models/sft/final"
+dataset_path: null
+val_dataset_path: null
 learning_rate: 2.0e-5
 num_train_epochs: 3
 per_device_train_batch_size: 2

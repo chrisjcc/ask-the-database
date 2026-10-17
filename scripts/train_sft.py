@@ -24,9 +24,14 @@ def main(cfg: DictConfig) -> None:
     dry_run = bool(getattr(cfg, "dry_run", False))
     if dry_run:
         logger.info("Dry-run mode active. Validating dataset and configs...")
-        processed_dir = Path(cfg.paths.processed_dir)
-        train_path = processed_dir / "train.jsonl"
-        val_path = processed_dir / "val.jsonl"
+        custom_dataset = getattr(cfg.training, "dataset_path", None)
+        train_path = (
+            Path(custom_dataset)
+            if custom_dataset
+            else Path(cfg.paths.processed_dir) / "train.jsonl"
+        )
+        custom_val = getattr(cfg.training, "val_dataset_path", None)
+        val_path = Path(custom_val) if custom_val else Path(cfg.paths.processed_dir) / "val.jsonl"
 
         train_ds = load_sft_dataset(str(train_path), max_samples=5)
         logger.info("Loaded dry-run training samples: %d", len(train_ds))
