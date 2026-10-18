@@ -86,17 +86,11 @@ make preprocess
 
 The Minimum Viable Experiment (MVE) establishes whether agent-as-harness distillation delivers measurable generalization improvements over conventional baselines on unseen database schemas *before* allocating cluster-scale compute.
 
-### The Role of `make train-harness-zero`
-Under the hood, `scripts/train_sft.py` serves as the unified LoRA fine-tuning engine across conditions. The target `make train-harness-zero` is pre-configured specifically for **Condition 4 (Proposed)**:
-```makefile
-train-harness-zero:
-	$(PYTHON) scripts/train_sft.py \
-	  training.dataset_path=data/distillation/reviewed_trajectories.jsonl \
-	  training.output_dir=models/sft/harness_zero $(ARGS)
-```
-- **Default Base Model**: `Qwen/Qwen2.5-Coder-7B-Instruct` (from `configs/config.yaml`).
-- **Lightweight Alternative**: Pass `ARGS="model=qwen2_5_coder_1_5b"` to train `Qwen/Qwen2.5-Coder-1.5B-Instruct`.
-- **Custom Output Path**: Pass `ARGS="training.output_dir=models/mve/harness_zero"` to isolate MVE runs.
+The MVE systematically evaluates four controlled conditions:
+1. **Condition 1**: Base Student (Zero-Shot) — unguided baseline without training.
+2. **Condition 2**: Conventional SFT Baseline — fine-tuned on gold-standard Spider demonstrations (`make train-sft`).
+3. **Condition 3**: Rejection Sampling Baseline — fine-tuned on self-generated rollouts filtered for test-suite correctness ($TS = 1.0$).
+4. **Condition 4**: Harness-Zero SFT (Proposed) — fine-tuned on on-policy rollouts reviewed and repaired by the reference harness $\mathcal{K}_{\text{SQL}}$ (`make train-harness-zero`).
 
 ---
 
@@ -175,7 +169,13 @@ python3 scripts/evaluate_benchmark.py \
 
 ### Condition 4: Harness-Zero SFT (Proposed Method)
 
-Collect on-policy student rollouts reviewed and minimally corrected by the reference harness $\mathcal{K}_{\text{SQL}}$, then train SFT on the accepted/repaired trajectories:
+Condition 4 evaluates the core contribution of the Harness-Zero paradigm: fine-tuning the student policy on on-policy rollouts reviewed and minimally corrected by the reference harness $\mathcal{K}_{\text{SQL}}$.
+
+> **Why `make train-harness-zero` is pre-configured specifically for Condition 4:**  
+> In this repository's Makefile convention:
+> - `make train-sft`: fine-tunes the baseline model on static gold demonstrations (Condition 2).
+> - `make train-harness-zero`: fine-tunes the proposed student on the Harness-Zero reviewed trajectory dataset (`data/distillation/reviewed_trajectories.jsonl`).
+> Both commands invoke the shared `scripts/train_sft.py` engine with appropriate dataset overrides. By default, it fine-tunes `Qwen/Qwen2.5-Coder-7B-Instruct` (or `1.5B` via `ARGS="model=qwen2_5_coder_1_5b"`).
 
 ```bash
 # Step 1: Collect stratified reviewed trajectories (150 Medium, 200 Hard, 150 Extra)
