@@ -1,17 +1,22 @@
 # Step-by-Step Guide: End-to-End Training, Evaluation & Harness-Zero MVE Pipeline
 
-This operational guide provides end-to-end instructions for running the complete `AskTheDatabase` training, evaluation, and Harness-Zero distillation pipeline on a remote compute server using `make` commands.
+This operational guide provides end-to-end instructions for running the complete `AskTheDatabase` training, evaluation, Minimum Viable Experiment (MVE), and Harness-Zero distillation pipeline on a remote compute server using `make` commands.
 
 ```
-                    End-to-End Operational Pipeline
- ┌───────────────┐     ┌────────────────┐     ┌────────────────┐
- │ 1. Preprocess │ ──> │ 2. SFT Warmup  │ ──> │ 3. GRPO / RLVR │
- └───────────────┘     └────────────────┘     └────────────────┘
-                                                       │
- ┌────────────────┐     ┌────────────────┐             ▼
- │ 6. MVE Report  │ <── │ 5. Harness SFT │ <── ┌────────────────┐
- │  (Gate: GO)    │     │  (Distillation)│     │ 4. K_SQL Collect│
- └────────────────┘     └────────────────┘     └────────────────┘
+                      End-to-End Operational Pipeline & MVE Architecture
+  ┌───────────────┐     ┌────────────────────────────────────────────────────────┐
+  │ 1. Preprocess │ ──> │ 2. MVE Conditions (500 Samples / Unseen Schemas)       │
+  └───────────────┘     │  • Cond 1: Base Student (Zero-Shot)                   │
+                        │  • Cond 2: Conventional SFT Baseline (Gold Data)       │
+                        │  • Cond 3: Rejection Sampling (Filtered Rollouts)     │
+                        │  • Cond 4: Harness-Zero SFT (K_SQL Distillation)      │
+                        └───────────────────────────┬────────────────────────────┘
+                                                    │
+                                                    ▼
+  ┌─────────────────┐                        ┌────────────────┐
+  │ 4. Cond 5 RLVR  │ <───────────────────── │ 3. MVE Report  │
+  │  (Cond 2 vs 4)  │   (Gate: GO Passed)    │ (Adjudication) │
+  └─────────────────┘                        └────────────────┘
 ```
 
 ---
@@ -72,141 +77,157 @@ make preprocess
 ```
 * **Artifacts Generated:**
   - `data/databases/*.sqlite` (Extracted SQLite database files)
-  - `data/processed/train.jsonl` (Normalized training split)
-  - `data/processed/val.jsonl` (Held-out validation split)
+  - `data/processed/train.jsonl` (Normalized training split, 6,997 instances)
+  - `data/processed/val.jsonl` (Held-out validation split, 1,034 instances)
 
 ---
 
-## 2. Condition 2 Baseline: Conventional SFT on Base Model
+## 2. The 4-Condition Minimum Viable Experiment (MVE)
 
-Train `Qwen/Qwen2.5-Coder-7B-Instruct` (or lightweight `1.5B`) on ground-truth static text-to-SQL pairs using LoRA ($r=16, \alpha=32$) via Hugging Face TRL:
+The Minimum Viable Experiment (MVE) establishes whether agent-as-harness distillation delivers measurable generalization improvements over conventional baselines on unseen database schemas *before* allocating cluster-scale compute.
+
+### The Role of `make train-harness-zero`
+Under the hood, `scripts/train_sft.py` serves as the unified LoRA fine-tuning engine across conditions. The target `make train-harness-zero` is pre-configured specifically for **Condition 4 (Proposed)**:
+```makefile
+train-harness-zero:
+	$(PYTHON) scripts/train_sft.py \
+	  training.dataset_path=data/distillation/reviewed_trajectories.jsonl \
+	  training.output_dir=models/sft/harness_zero $(ARGS)
+```
+- **Default Base Model**: `Qwen/Qwen2.5-Coder-7B-Instruct` (from `configs/config.yaml`).
+- **Lightweight Alternative**: Pass `ARGS="model=qwen2_5_coder_1_5b"` to train `Qwen/Qwen2.5-Coder-1.5B-Instruct`.
+- **Custom Output Path**: Pass `ARGS="training.output_dir=models/mve/harness_zero"` to isolate MVE runs.
+
+---
+
+### Condition 1: Base Student (Zero-Shot)
+
+Evaluate the unguided base model directly under the tool environment without fine-tuning:
 
 ```bash
-# Default: Qwen2.5-Coder-7B-Instruct (~15.2 GB download)
+# Evaluate Condition 1 on benchmark suites
+python3 scripts/evaluate_benchmark.py \
+  evaluation.model_path="Qwen/Qwen2.5-Coder-7B-Instruct" \
+  evaluation.output_dir="results/cond1" \
+  evaluation.summary_file="results/cond1/summary.json"
+```
+*(If using the 1.5B model, replace with `evaluation.model_path="Qwen/Qwen2.5-Coder-1.5B-Instruct"`)*
+
+---
+
+### Condition 2: Conventional SFT Baseline
+
+Train the base model on ground-truth static text-to-SQL pairs using LoRA ($r=16, \alpha=32$):
+
+```bash
+# Full dataset training (Default: Qwen2.5-Coder-7B-Instruct, ~15.2 GB download)
 make train-sft
 
-# Lightweight alternative: Qwen2.5-Coder-1.5B-Instruct (~3.1 GB download, fast iteration, native SDPA/Triton attention)
+# Lightweight 1.5B alternative:
 make train-sft ARGS="model=qwen2_5_coder_1_5b"
+
+# Focused MVE Baseline: 500 gold demonstrations into MVE checkpoint directory
+make train-sft ARGS="training.output_dir=models/mve/sft_baseline data.max_samples=500"
+
+# Fast dry-run check:
+make train-sft ARGS="dry_run=true"
 ```
-* **Fast dry-run check (verifies configs, tokenizers, and LoRA layers without GPU compute):**
-  ```bash
-  # Recommended: via make (automatically enforces environment isolation)
-  make train-sft ARGS="dry_run=true"
+* **Resulting Checkpoint:** `models/sft/checkpoint-final` (or `models/mve/sft_baseline`)
 
-  # Or with the 1.5B model:
-  make train-sft ARGS="model=qwen2_5_coder_1_5b dry_run=true"
-
-  # Or directly via python
-  python scripts/train_sft.py dry_run=true
-  ```
-* **Resulting Checkpoint:** `models/sft/checkpoint-final`
+```bash
+# Evaluate Condition 2
+python3 scripts/evaluate_benchmark.py \
+  evaluation.model_path="models/mve/sft_baseline" \
+  evaluation.output_dir="results/cond2" \
+  evaluation.summary_file="results/cond2/summary.json"
+```
 
 ---
 
-## 3. Multi-Turn RLVR / GRPO Policy Optimization
+### Condition 3: Successful-Rollout Filtering Baseline (Rejection Sampling)
 
-Train the agent policy using Group Relative Policy Optimization (GRPO) in `SkyRLSQLEnvironment`, optimizing multi-turn test-suite rewards and error-recovery bonuses:
+Sample trajectories generated by the student, filter out any failures, and train strictly on rollouts that achieve Test-Suite Correctness ($TS = 1.0$) with zero interventions:
 
 ```bash
-make train-grpo
-```
-* **Fast dry-run check (verifies multi-turn environment stepping and group reward normalization):**
-  ```bash
-  # Recommended: via make (automatically enforces environment isolation)
-  make train-grpo ARGS="dry_run=true"
+# Step 1: Collect rejection sampling rollouts with rule engine
+python3 scripts/collect_reviewed_trajectories.py \
+  --output data/distillation/filtered_rollouts.jsonl \
+  --metrics-output data/distillation/filtered_metrics.json \
+  --teacher-backend rule
 
-  # Or directly via python
-  python scripts/train_rlvr.py dry_run=true
-  ```
-* **Resulting Checkpoint:** `models/rlvr/final`
+# Step 2: Train SFT on filtered successful rollouts
+python3 scripts/train_sft.py \
+  training.dataset_path=data/distillation/filtered_rollouts.jsonl \
+  training.output_dir=models/mve/filtered_rollouts
+```
+*(If using the 1.5B model, append `model=qwen2_5_coder_1_5b`)*
+* **Resulting Checkpoint:** `models/mve/filtered_rollouts`
+
+```bash
+# Evaluate Condition 3
+python3 scripts/evaluate_benchmark.py \
+  evaluation.model_path="models/mve/filtered_rollouts" \
+  evaluation.output_dir="results/cond3" \
+  evaluation.summary_file="results/cond3/summary.json"
+```
 
 ---
 
-## 4. Harness-Zero Reviewed Trajectory Collection
+### Condition 4: Harness-Zero SFT (Proposed Method)
 
-Collect 500 stratified Spider training tasks (150 Medium, 200 Hard, 150 Extra Hard) where student proposals are intercepted and repaired step-by-step by the reference harness $\mathcal{K}_{\text{SQL}}$:
+Collect on-policy student rollouts reviewed and minimally corrected by the reference harness $\mathcal{K}_{\text{SQL}}$, then train SFT on the accepted/repaired trajectories:
 
 ```bash
+# Step 1: Collect stratified reviewed trajectories (150 Medium, 200 Hard, 150 Extra)
 make collect-distillation
+
+# Fast dry-run smoke test (5 sample episodes):
+python3 scripts/collect_reviewed_trajectories.py --dry-run
 ```
 * **Teacher Backend Options:**
   - **Google Gemini 2.0 Flash (Default, Free Tier via `GEMINI_API_KEY`):**
     ```bash
-    python scripts/collect_reviewed_trajectories.py \
+    python3 scripts/collect_reviewed_trajectories.py \
       --teacher-backend litellm \
       --teacher-model gemini/gemini-2.0-flash
     ```
   - **Deterministic Pure Rule Engine (100% Offline, Zero Network Requests):**
     ```bash
-    python scripts/collect_reviewed_trajectories.py \
+    python3 scripts/collect_reviewed_trajectories.py \
       --teacher-backend rule
     ```
-  - **Hermetic dry-run smoke test (5 sample episodes):**
-    ```bash
-    python scripts/collect_reviewed_trajectories.py --dry-run
-    ```
-* **Artifacts Generated:**
-  - `data/distillation/reviewed_trajectories.jsonl` (ChatML formatted trajectories with reviewer thoughts masked)
-  - `data/distillation/collection_metrics.json` (Intervention rates, rule trigger counts, and execution metrics)
-
----
-
-## 5. Condition 4 Proposed: Harness-Zero Agent SFT
-
-Fine-tune `Qwen/Qwen2.5-Coder-7B-Instruct` on the collected reviewed trajectories to internalize schema inspection and error recovery:
 
 ```bash
-make train-harness-zero
+# Step 2: Fine-tune on reviewed trajectories
+make train-harness-zero ARGS="training.output_dir=models/mve/harness_zero"
+
+# Lightweight 1.5B alternative:
+make train-harness-zero ARGS="model=qwen2_5_coder_1_5b training.output_dir=models/mve/harness_zero"
+
+# Fast dry-run check:
+make train-harness-zero ARGS="dry_run=true"
 ```
-* **Fast dry-run check:**
-  ```bash
-  make train-harness-zero ARGS="dry_run=true"
-  ```
-* **Resulting Checkpoint:** `models/sft/harness_zero`
-
----
-
-## 6. Multi-Benchmark Evaluation Across All 4 Conditions
-
-Run interactive evaluation against the Spider Dev and robustness test suites across the four conditions:
+* **Resulting Checkpoint:** `models/mve/harness_zero` (or `models/sft/harness_zero`)
 
 ```bash
-# Condition 1: Base Student (Zero-Shot)
-python scripts/evaluate_benchmark.py \
-  evaluation.model_path="Qwen/Qwen2.5-Coder-7B-Instruct" \
-  evaluation.output_dir="results/cond1" \
-  evaluation.summary_file="results/cond1/summary.json"
-
-# Condition 2: Conventional SFT Baseline
-python scripts/evaluate_benchmark.py \
-  evaluation.model_path="models/sft/checkpoint-final" \
-  evaluation.output_dir="results/cond2" \
-  evaluation.summary_file="results/cond2/summary.json"
-
-# Condition 3: Successful-Rollout Filtering Baseline (Rejection Sampling)
-python scripts/evaluate_benchmark.py \
-  evaluation.model_path="models/sft/filtered" \
-  evaluation.output_dir="results/cond3" \
-  evaluation.summary_file="results/cond3/summary.json"
-
-# Condition 4: Harness-Zero SFT (Proposed)
-python scripts/evaluate_benchmark.py \
-  evaluation.model_path="models/sft/harness_zero" \
+# Evaluate Condition 4
+python3 scripts/evaluate_benchmark.py \
+  evaluation.model_path="models/mve/harness_zero" \
   evaluation.output_dir="results/cond4" \
   evaluation.summary_file="results/cond4/summary.json"
 ```
 
 ---
 
-## 7. MVE Decision Gate Adjudication & Report Generation
+## 3. MVE Decision Gate Adjudication & Report Generation
 
-Run the automated decision gate evaluator to compute empirical margins, test stop conditions, and publish the research report:
+Run the automated decision gate evaluator to compute empirical margins across all 4 conditions, test formal stop conditions, and publish the research report:
 
 ```bash
 make evaluate-mve
 ```
 
-This runs [`scripts/run_mve_evaluation.py`](file:///Users/christiancontrerascampana/Desktop/GitHub/text-to-sql/ask-the-database/scripts/run_mve_evaluation.py) and outputs:
+This runs [`scripts/run_mve_evaluation.py`](file:///Users/christiancontrerascampana/Desktop/GitHub/text-to-sql/ask-the-database/scripts/run_mve_evaluation.py) against [`configs/distillation/mve_conditions.yaml`](file:///Users/christiancontrerascampana/Desktop/GitHub/text-to-sql/ask-the-database/configs/distillation/mve_conditions.yaml) and outputs:
 1. **Serialized JSON Summary**: `results/mve_evaluation_summary.json`
 2. **Markdown Research Report**: `docs/research/mve_harness_zero_results.md` and `docs/research/mve_harness_zero_distillation.md`
 
@@ -222,7 +243,38 @@ This runs [`scripts/run_mve_evaluation.py`](file:///Users/christiancontrerascamp
 
 ---
 
-## 8. Summary of Makefile Operational Commands
+## 4. Condition 5: Multi-Turn RLVR / GRPO Sample Efficiency Comparison
+
+Once `make evaluate-mve` yields **`Adjudication Verdict: GO`**, execute Condition 5 to measure reinforcement learning sample efficiency and asymptotic correctness:
+
+Train agent policies using Group Relative Policy Optimization (GRPO) in `SkyRLSQLEnvironment` comparing initialization from Condition 2 vs. Condition 4:
+
+```bash
+# Run A: RLVR initialized from Condition 2 baseline checkpoint
+make train-grpo ARGS="training.model_path=models/mve/sft_baseline training.output_dir=models/rlvr/from_cond2 training.max_steps=200"
+
+# Run B: RLVR initialized from Condition 4 Harness-Zero distilled checkpoint
+make train-grpo ARGS="training.model_path=models/mve/harness_zero training.output_dir=models/rlvr/from_cond4 training.max_steps=200"
+
+# Fast dry-run check:
+make train-grpo ARGS="dry_run=true"
+```
+* **Resulting Checkpoints:** `models/rlvr/from_cond2` vs. `models/rlvr/from_cond4`
+
+---
+
+## 5. Scaling Beyond MVE: Full-Cluster Distributed Sweeps
+
+With the MVE decision gates validated and the Condition 4 distilled checkpoint ready, scale multi-turn GRPO across Slurm GPU clusters:
+
+```bash
+# Launch multi-GPU hyperparameter array sweeps on Slurm:
+sbatch scripts/slurm/launch_rlvr_sweep.sh
+```
+
+---
+
+## 6. Summary of Makefile Operational Commands
 
 | Command | Action | Output / Checkpoint |
 | :--- | :--- | :--- |
@@ -230,23 +282,9 @@ This runs [`scripts/run_mve_evaluation.py`](file:///Users/christiancontrerascamp
 | `make lint` | Runs Ruff linter and strict Mypy type-check | Zero warnings |
 | `make test` | Executes full Pytest unit test suite | 149/149 tests passing |
 | `make preprocess` | Downloads and tokenizes Spider datasets | `data/processed/train.jsonl` |
-| `make train-sft` | Trains SFT on static gold SQL (Cond 2) | `models/sft/checkpoint-final` |
-| `make train-grpo` | Runs multi-turn RLVR / GRPO training | `models/rlvr/final` |
+| `make train-sft` | Trains Conventional SFT Baseline (Cond 2) | `models/mve/sft_baseline` |
 | `make collect-distillation` | Collects K_SQL reviewed trajectories | `data/distillation/reviewed_trajectories.jsonl` |
-| `make train-harness-zero` | Trains SFT on reviewed trajectories (Cond 4) | `models/sft/harness_zero` |
+| `make train-harness-zero` | Trains Harness-Zero SFT (Cond 4) | `models/mve/harness_zero` |
 | `make evaluate` | Evaluates models on Spider test suites | `results/evaluation_summary.json` |
 | `make evaluate-mve` | Adjudicates Decision Gates (`GO`/`NO-GO`) | `docs/research/mve_harness_zero_results.md` |
-
----
-
-## 9. Next Step: Full Scale Beyond MVE
-
-Once the `make evaluate-mve` verdict outputs **`Adjudication Verdict: GO`**, you can scale beyond the MVE to full-cluster RLVR sweeps:
-1. Warm-start multi-turn GRPO with the Condition 4 distilled checkpoint:
-   ```bash
-   python scripts/train_rlvr.py training.base_model_path="models/sft/harness_zero" training.max_steps=1000
-   ```
-2. Launch multi-GPU hyperparameter array sweeps on Slurm:
-   ```bash
-   sbatch scripts/slurm/launch_rlvr_sweep.sh
-   ```
+| `make train-grpo` | Runs multi-turn GRPO / RLVR (Cond 5) | `models/rlvr/final` |
