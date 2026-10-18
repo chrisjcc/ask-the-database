@@ -53,8 +53,11 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
         candidate_paths = [
             Path(f"data/processed/{bench}_eval.jsonl"),
             Path(f"data/processed/{bench}_validation.jsonl"),
+            Path(f"data/processed/{bench}_val.jsonl"),
             Path(f"data/processed/{bench}.jsonl"),
         ]
+        if bench in ("spider", "spider_dev", "val"):
+            candidate_paths.append(Path("data/processed/val.jsonl"))
         dataset_path = None
         for p in candidate_paths:
             if p.exists():
@@ -62,14 +65,14 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
                 break
 
         samples: list[dict[str, Any]] = []
-        if dataset_path is not None:
+        custom_candidates = evaluation_section.get("custom_samples", {}).get(bench)
+        if custom_candidates is not None:
+            samples = list(custom_candidates)
+        elif dataset_path is not None:
             with open(dataset_path, encoding="utf-8") as f:
                 for line in f:
                     if line.strip():
                         samples.append(json.loads(line))
-        else:
-            # Check if custom samples injected in cfg for testing
-            samples = evaluation_section.get("custom_samples", {}).get(bench, [])
 
         if not samples:
             logger.warning("Benchmark split '%s' not found. Skipping.", bench)

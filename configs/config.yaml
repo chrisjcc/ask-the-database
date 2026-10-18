@@ -4,6 +4,7 @@ defaults:
   - model: qwen2_5_coder_7b
   - training: sft
   - reward: rubric_default
+  - evaluation: spider_standard
   - _self_
 
 project_name: "ask-the-database"
