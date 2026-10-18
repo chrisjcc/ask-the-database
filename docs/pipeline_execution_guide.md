@@ -150,11 +150,10 @@ python3 scripts/collect_reviewed_trajectories.py \
   --teacher-backend rule
 
 # Step 2: Train SFT on filtered successful rollouts
-python3 scripts/train_sft.py \
-  training.dataset_path=data/distillation/filtered_rollouts.jsonl \
-  training.output_dir=models/mve/filtered_rollouts
-```
-*(If using the 1.5B model, append `model=qwen2_5_coder_1_5b`)*
+make train-filtered
+
+# Or lightweight 1.5B alternative:
+make train-filtered ARGS="model=qwen2_5_coder_1_5b"
 * **Resulting Checkpoint:** `models/mve/filtered_rollouts`
 
 ```bash
@@ -283,8 +282,9 @@ sbatch scripts/slurm/launch_rlvr_sweep.sh
 | `make test` | Executes full Pytest unit test suite | 149/149 tests passing |
 | `make preprocess` | Downloads and tokenizes Spider datasets | `data/processed/train.jsonl` |
 | `make train-sft` | Trains Conventional SFT Baseline (Cond 2) | `models/mve/sft_baseline` |
-| `make collect-distillation` | Collects K_SQL reviewed trajectories | `data/distillation/reviewed_trajectories.jsonl` |
+| `make train-filtered` | Trains Rejection Sampling SFT (Cond 3) | `models/mve/filtered_rollouts` |
 | `make train-harness-zero` | Trains Harness-Zero SFT (Cond 4) | `models/mve/harness_zero` |
+| `make train-grpo` | Runs multi-turn GRPO / RLVR (Cond 5) | `models/rlvr/final` |
+| `make collect-distillation` | Collects K_SQL reviewed trajectories | `data/distillation/reviewed_trajectories.jsonl` |
 | `make evaluate` | Evaluates models on Spider test suites | `results/evaluation_summary.json` |
 | `make evaluate-mve` | Adjudicates Decision Gates (`GO`/`NO-GO`) | `docs/research/mve_harness_zero_results.md` |
-| `make train-grpo` | Runs multi-turn GRPO / RLVR (Cond 5) | `models/rlvr/final` |
