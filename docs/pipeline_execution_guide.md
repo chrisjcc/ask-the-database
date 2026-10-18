@@ -154,6 +154,8 @@ make train-filtered
 
 # Or lightweight 1.5B alternative:
 make train-filtered ARGS="model=qwen2_5_coder_1_5b"
+```
+
 * **Resulting Checkpoint:** `models/mve/filtered_rollouts`
 
 ```bash
@@ -232,8 +234,7 @@ This runs [`scripts/run_mve_evaluation.py`](file:///Users/christiancontrerascamp
 
 ### Decision Gate Thresholds:
 
-* **Primary Gate (Generalization Gain)**:
-  $$\Delta \text{TS}_{4-2} \ge +5.0\text{ pp} \quad \text{and} \quad \Delta \text{TS}_{4-3} \ge +3.0\text{ pp}$$
+* **Primary Gate (Generalization Gain)**: $$\Delta \text{TS}_{4-2} \ge +5.0\text{ pp} \quad \text{and} \quad \Delta \text{TS}_{4-3} \ge +3.0\text{ pp}$$
 * **Behavioral Gate (Error Recovery)**:
   $$\text{Relative Gain in } R_{\text{rec}} \ge +20.0\% \text{ over Condition 2}$$
 * **Efficiency Gate (Trajectory Turns)**:
