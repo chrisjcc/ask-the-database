@@ -178,12 +178,24 @@ Condition 4 evaluates the core contribution of the Harness-Zero paradigm: fine-t
 > - `make train-harness-zero`: fine-tunes the proposed student on the Harness-Zero reviewed trajectory dataset (`data/distillation/reviewed_trajectories.jsonl`).
 > Both commands invoke the shared `scripts/train_sft.py` engine with appropriate dataset overrides. By default, it fine-tunes `Qwen/Qwen2.5-Coder-7B-Instruct` (or `1.5B` via `ARGS="model=qwen2_5_coder_1_5b"`).
 
-```bash
-# Step 1: Collect stratified reviewed trajectories (150 Medium, 200 Hard, 150 Extra)
-make collect-distillation
+> [!TIP]
+> **Why run dry runs first?**  
+> The dry runs are 5-second smoke tests designed to catch configuration, environment, database path, and syntax errors without wasting GPU compute or waiting hours:
+> 1. `python3 scripts/collect_reviewed_trajectories.py --dry-run` (or `make collect-distillation ARGS="--dry-run"`):
+>    - Collects only 5 sample episodes (instead of the full 500).
+>    - Verifies that SQLite database paths, reference harness rules, and trajectory export work properly without crashing.
+> 2. `make train-harness-zero ARGS="dry_run=true"`:
+>    - Loads 5 samples from the dataset.
+>    - Verifies the tokenizer, LoRA adapter configuration, and output directory creation in ~1 second to ensure that full training won't crash when launched.
 
-# Fast dry-run smoke test (5 sample episodes):
-python3 scripts/collect_reviewed_trajectories.py --dry-run
+```bash
+# Step 1: Collect stratified reviewed trajectories
+# Fast dry-run smoke test (5 sample episodes to verify pipeline health):
+make collect-distillation ARGS="--dry-run"
+# (or directly: python3 scripts/collect_reviewed_trajectories.py --dry-run)
+
+# Full collection: Collect 500 stratified reviewed trajectories (150 Medium, 200 Hard, 150 Extra):
+make collect-distillation
 ```
 * **Teacher Backend Options:**
   - **Google Gemini 2.0 Flash (Default, Free Tier via `GEMINI_API_KEY`):**
@@ -200,13 +212,14 @@ python3 scripts/collect_reviewed_trajectories.py --dry-run
 
 ```bash
 # Step 2: Fine-tune on reviewed trajectories
+# Fast dry-run check (< 1 second verification):
+make train-harness-zero ARGS="dry_run=true"
+
+# Full training on reviewed trajectories:
 make train-harness-zero ARGS="training.output_dir=models/mve/harness_zero"
 
 # Lightweight 1.5B alternative:
 make train-harness-zero ARGS="model=qwen2_5_coder_1_5b training.output_dir=models/mve/harness_zero"
-
-# Fast dry-run check:
-make train-harness-zero ARGS="dry_run=true"
 ```
 * **Resulting Checkpoint:** `models/mve/harness_zero` (or `models/sft/harness_zero`)
 
