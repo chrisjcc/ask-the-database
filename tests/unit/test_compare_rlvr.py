@@ -3,8 +3,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from scripts.compare_rlvr_efficiency import (
     calculate_sample_efficiency_metrics,
     compare_runs,
