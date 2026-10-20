@@ -17,7 +17,7 @@ MYPY := $(if $(wildcard $(VENV)/bin/mypy),$(VENV)/bin/mypy,mypy)
 PYTEST := $(if $(wildcard $(VENV)/bin/pytest),$(VENV)/bin/pytest,pytest)
 DVC := $(if $(wildcard $(VENV)/bin/dvc),$(VENV)/bin/dvc,dvc)
 
-.PHONY: help install install-dev lint format test preprocess train-sft train-filtered train-grpo collect-distillation train-harness-zero evaluate evaluate-mve
+.PHONY: help install install-dev lint format test preprocess train-sft train-filtered train-grpo collect-distillation train-harness-zero evaluate evaluate-mve compare-rlvr
 
 help:
 	@echo "AskTheDatabase - Operational Commands:"
@@ -34,6 +34,7 @@ help:
 	@echo "  make collect-distillation Collect K_SQL reviewed trajectories for Harness-Zero"
 	@echo "  make evaluate             Evaluate benchmark suites (Spider, DK, Syn, Realistic)"
 	@echo "  make evaluate-mve         Adjudicate 4-condition MVE decision gates & publish report"
+	@echo "  make compare-rlvr         Compare sample efficiency & asymptotic accuracy (Run A vs Run B)"
 
 install:
 	$(PIP) install --upgrade pip
@@ -78,3 +79,6 @@ evaluate:
 
 evaluate-mve:
 	$(PYTHON) scripts/run_mve_evaluation.py $(ARGS)
+
+compare-rlvr:
+	$(PYTHON) scripts/compare_rlvr_efficiency.py $(ARGS)

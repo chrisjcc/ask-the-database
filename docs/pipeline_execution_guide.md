@@ -263,6 +263,8 @@ This runs [`scripts/run_mve_evaluation.py`](file:///Users/christiancontrerascamp
 
 Once `make evaluate-mve` yields **`Adjudication Verdict: GO`**, execute Condition 5 to measure reinforcement learning sample efficiency and asymptotic correctness:
 
+### Step 4.1: Train Both Policies via GRPO
+
 Train agent policies using Group Relative Policy Optimization (GRPO) in `SkyRLSQLEnvironment` comparing initialization from Condition 2 vs. Condition 4:
 
 ```bash
@@ -275,7 +277,57 @@ make train-grpo ARGS="training.model_path=models/mve/harness_zero training.outpu
 # Fast dry-run check:
 make train-grpo ARGS="dry_run=true"
 ```
-* **Resulting Checkpoints:** `models/rlvr/from_cond2` vs. `models/rlvr/from_cond4`
+* **Resulting Checkpoints & States:**
+  - `models/rlvr/from_cond2/training_state.json`
+  - `models/rlvr/from_cond4/training_state.json`
+
+### Step 4.2: Evaluate Checkpoints on Held-Out Benchmark
+
+Evaluate both trained checkpoints to measure asymptotic correctness on unseen databases:
+
+```bash
+# Evaluate Run A (Condition 2 -> RLVR)
+python3 scripts/evaluate_benchmark.py \
+  evaluation.model_path="models/rlvr/from_cond2" \
+  evaluation.output_dir="results/rlvr_from_cond2" \
+  evaluation.summary_file="results/rlvr_from_cond2/summary.json"
+
+# Evaluate Run B (Condition 4 Harness-Zero -> RLVR)
+python3 scripts/evaluate_benchmark.py \
+  evaluation.model_path="models/rlvr/from_cond4" \
+  evaluation.output_dir="results/rlvr_from_cond4" \
+  evaluation.summary_file="results/rlvr_from_cond4/summary.json"
+```
+
+### Step 4.3: Compare Sample Efficiency & Asymptotic Correctness
+
+Run the automated comparison script to quantify convergence speed, cumulative reward AUC, and asymptotic test-suite accuracy gains:
+
+```bash
+make compare-rlvr
+```
+*(Or run directly: `python3 scripts/compare_rlvr_efficiency.py`)*
+
+Outputs generated:
+1. **Markdown Report:** `results/rlvr_sample_efficiency_report.md`
+2. **JSON Summary:** `results/rlvr_sample_efficiency_summary.json`
+
+### Step 4.4: Weights & Biases (W&B) Dashboard Inspection
+
+When `training.report_to=wandb` is enabled (default in `configs/training/rlvr_skyrl_agent.yaml`), both runs log under project `ask-the-database`.
+
+In the W&B dashboard, create an overlay workspace comparing `rlvr_from_cond2` vs. `rlvr_from_cond4`:
+
+1. **`mean_reward` vs. `step` (Primary Convergence Speed Metric)**:
+   - **X-axis**: `step` (0 to 200).
+   - **Y-axis**: `mean_reward` (bounded between -1.0 and +1.0).
+   - **What to look for**:
+     - **Initial Zero-Crossing ($R > 0$)**: Run B should cross the positive reward threshold much earlier than Run A (e.g., within 20–40 steps vs. 100+ steps), demonstrating superior sample efficiency.
+     - **Initial Slope**: Steep rise in Run B vs. flat exploration plateau in Run A.
+2. **`advantage_mean` vs. `step` (Gradient Learning Signal)**:
+   - **What to look for**: Confirms healthy policy gradient updates without variance collapse.
+3. **`min_reward` & `max_reward` vs. `step` (Rollout Variance Envelope)**:
+   - **What to look for**: Highlights group diversity among the 4 parallel rollouts per prompt.
 
 ---
 
@@ -305,3 +357,4 @@ sbatch scripts/slurm/launch_rlvr_sweep.sh
 | `make collect-distillation` | Collects K_SQL reviewed trajectories | `data/distillation/reviewed_trajectories.jsonl` |
 | `make evaluate` | Evaluates models on Spider test suites | `results/evaluation_summary.json` |
 | `make evaluate-mve` | Adjudicates Decision Gates (`GO`/`NO-GO`) | `docs/research/mve_harness_zero_results.md` |
+| `make compare-rlvr` | Compares RLVR sample efficiency & accuracy | `results/rlvr_sample_efficiency_report.md` |

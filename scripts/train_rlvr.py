@@ -170,6 +170,22 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
         max_turns=int(training_cfg.get("max_turns", 5)),
     )
 
+    report_to = str(training_cfg.get("report_to", "none")).lower()
+    wandb_run = None
+    if report_to == "wandb":
+        try:
+            import wandb
+
+            run_name = Path(output_dir).name
+            wandb_run = wandb.init(
+                project=str(getattr(cfg, "project_name", "ask-the-database")),
+                name=f"rlvr_{run_name}",
+                config=OmegaConf.to_container(cfg, resolve=True),
+            )
+            logger.info("Initialized Weights & Biases run: rlvr_%s", run_name)
+        except Exception as e:
+            logger.warning("Failed to initialize Weights & Biases: %s. Continuing without wandb.", e)
+
     logging_steps = int(getattr(training_cfg, "logging_steps", 5))
     save_steps = int(getattr(training_cfg, "save_steps", 50))
     total_steps = max_steps if max_steps > 0 else min(len(instances), 250)
@@ -202,6 +218,18 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
         telemetry["mean_rewards"].append(mean_reward)
         telemetry["group_advantages"].append(advantages)
 
+        if wandb_run is not None:
+            wandb.log(
+                {
+                    "step": step + 1,
+                    "mean_reward": mean_reward,
+                    "min_reward": min(rollout_rewards) if rollout_rewards else 0.0,
+                    "max_reward": max(rollout_rewards) if rollout_rewards else 0.0,
+                    "advantage_mean": sum(advantages) / len(advantages) if advantages else 0.0,
+                },
+                step=step + 1,
+            )
+
         if (step + 1) % logging_steps == 0 or step == 0 or (step + 1) == total_steps:
             logger.info(
                 "Step %d/%d (%.1f%%) — Mean Reward: %.4f | Min: %.4f | Max: %.4f | Advantages: %s",
@@ -225,6 +253,7 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                         "current_step": step + 1,
                         "total_steps": total_steps,
                         "final_mean_reward": mean_reward,
+                        "reward_history": telemetry["mean_rewards"],
                     },
                     f,
                     indent=2,
@@ -240,6 +269,9 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                     indent=2,
                 )
             )
+
+    if wandb_run is not None:
+        wandb_run.finish()
 
     telemetry["status"] = "training_completed"
     logger.info(
