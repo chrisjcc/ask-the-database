@@ -267,15 +267,19 @@ Once `make evaluate-mve` yields **`Adjudication Verdict: GO`**, execute Conditio
 
 Train agent policies using Group Relative Policy Optimization (GRPO) in `SkyRLSQLEnvironment` comparing initialization from Condition 2 vs. Condition 4:
 
+> [!TIP]
+> **Why run the dry run first?**  
+> The dry-run smoke test (`make train-grpo ARGS="dry_run=true"`) executes a 5-step mock GRPO loop in ~5 seconds. It verifies environment initialization (`SkyRLSQLEnvironment`), LoRA adapter configuration, rollout buffering, multi-turn reward rubric computation, and W&B logging without wasting GPU compute or crashing mid-run.
+
 ```bash
+# Fast dry-run smoke test (< 5 seconds verification):
+make train-grpo ARGS="dry_run=true"
+
 # Run A: RLVR initialized from Condition 2 baseline checkpoint
 make train-grpo ARGS="training.model_path=models/mve/sft_baseline training.output_dir=models/rlvr/from_cond2 training.max_steps=200"
 
 # Run B: RLVR initialized from Condition 4 Harness-Zero distilled checkpoint
 make train-grpo ARGS="training.model_path=models/mve/harness_zero training.output_dir=models/rlvr/from_cond4 training.max_steps=200"
-
-# Fast dry-run check:
-make train-grpo ARGS="dry_run=true"
 ```
 * **Resulting Checkpoints & States:**
   - `models/rlvr/from_cond2/training_state.json`
