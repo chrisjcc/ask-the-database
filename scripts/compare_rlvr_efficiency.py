@@ -63,8 +63,20 @@ def compare_runs(
         # Synthetic representative trajectories for dry-run validation
         rewards_a = [-0.60 + 0.003 * i for i in range(200)]  # Starts low, slowly climbs to ~0.0
         rewards_b = [-0.20 + 0.004 * i for i in range(200)]  # Starts grounded, climbs to ~0.60
-        eval_a: dict[str, Any] = {"spider": {"test_suite_accuracy_ts": 53.5, "execution_accuracy_ex": 59.1, "recovery_rate_mrr": 24.0}}
-        eval_b: dict[str, Any] = {"spider": {"test_suite_accuracy_ts": 61.2, "execution_accuracy_ex": 67.4, "recovery_rate_mrr": 42.5}}
+        eval_a: dict[str, Any] = {
+            "spider": {
+                "test_suite_accuracy_ts": 53.5,
+                "execution_accuracy_ex": 59.1,
+                "recovery_rate_mrr": 24.0,
+            }
+        }
+        eval_b: dict[str, Any] = {
+            "spider": {
+                "test_suite_accuracy_ts": 61.2,
+                "execution_accuracy_ex": 67.4,
+                "recovery_rate_mrr": 42.5,
+            }
+        }
     else:
         state_a_file = run_a_dir / "training_state.json"
         state_b_file = run_b_dir / "training_state.json"
@@ -151,13 +163,13 @@ Comparing reinforcement learning convergence between **Condition 2 (Conventional
 
 | Convergence Metric | Run A (from Cond 2 SFT) | Run B (from Cond 4 Harness-Zero) | Advantage / Gain |
 | :--- | :---: | :---: | :---: |
-| **Total RL Steps** | {eff_a['total_steps']} | {eff_b['total_steps']} | — |
-| **Steps to Positive Reward ($R > 0$)** | {eff_a['steps_to_milestone'] or 'Did not reach'} | **{eff_b['steps_to_milestone'] or 'Did not reach'}** | Speedup: **{comp['speedup_milestone']}** |
-| **Mean Reward @ Step 25** | {eff_a['reward_step_25']} | **{eff_b['reward_step_25']}** | $\Delta = {round(eff_b['reward_step_25'] - eff_a['reward_step_25'], 4)}$ |
-| **Mean Reward @ Step 50** | {eff_a['reward_step_50']} | **{eff_b['reward_step_50']}** | $\Delta = {round(eff_b['reward_step_50'] - eff_a['reward_step_50'], 4)}$ |
-| **Mean Reward @ Step 100** | {eff_a['reward_step_100']} | **{eff_b['reward_step_100']}** | $\Delta = {round(eff_b['reward_step_100'] - eff_a['reward_step_100'], 4)}$ |
-| **Final Training Mean Reward** | {eff_a['final_reward']} | **{eff_b['final_reward']}** | $\Delta = {round(eff_b['final_reward'] - eff_a['final_reward'], 4)}$ |
-| **Cumulative Reward AUC** | {eff_a['area_under_curve']} | **{eff_b['area_under_curve']}** | **+{comp['delta_auc_cumulative_reward']}** |
+| **Total RL Steps** | {eff_a["total_steps"]} | {eff_b["total_steps"]} | — |
+| **Steps to Positive Reward ($R > 0$)** | {eff_a["steps_to_milestone"] or "Did not reach"} | **{eff_b["steps_to_milestone"] or "Did not reach"}** | Speedup: **{comp["speedup_milestone"]}** |
+| **Mean Reward @ Step 25** | {eff_a["reward_step_25"]} | **{eff_b["reward_step_25"]}** | $\Delta = {round(eff_b["reward_step_25"] - eff_a["reward_step_25"], 4)}$ |
+| **Mean Reward @ Step 50** | {eff_a["reward_step_50"]} | **{eff_b["reward_step_50"]}** | $\Delta = {round(eff_b["reward_step_50"] - eff_a["reward_step_50"], 4)}$ |
+| **Mean Reward @ Step 100** | {eff_a["reward_step_100"]} | **{eff_b["reward_step_100"]}** | $\Delta = {round(eff_b["reward_step_100"] - eff_a["reward_step_100"], 4)}$ |
+| **Final Training Mean Reward** | {eff_a["final_reward"]} | **{eff_b["final_reward"]}** | $\Delta = {round(eff_b["final_reward"] - eff_a["final_reward"], 4)}$ |
+| **Cumulative Reward AUC** | {eff_a["area_under_curve"]} | **{eff_b["area_under_curve"]}** | **+{comp["delta_auc_cumulative_reward"]}** |
 
 ---
 
@@ -165,16 +177,16 @@ Comparing reinforcement learning convergence between **Condition 2 (Conventional
 
 | Evaluation Benchmark | Run A (from Cond 2 SFT) | Run B (from Cond 4 Harness-Zero) | Delta ($\Delta$) |
 | :--- | :---: | :---: | :---: |
-| **Test-Suite Accuracy (TS)** | {eval_a['ts']}% | **{eval_b['ts']}%** | **+{comp['delta_test_suite_accuracy']} pp** |
-| **Execution Accuracy (EX)** | {eval_a['ex']}% | **{eval_b['ex']}%** | +{round(eval_b['ex'] - eval_a['ex'], 2)} pp |
-| **Multi-Turn Recovery Rate (MRR)** | {eval_a['mrr']}% | **{eval_b['mrr']}%** | +{round(eval_b['mrr'] - eval_a['mrr'], 2)} pp |
+| **Test-Suite Accuracy (TS)** | {eval_a["ts"]}% | **{eval_b["ts"]}%** | **+{comp["delta_test_suite_accuracy"]} pp** |
+| **Execution Accuracy (EX)** | {eval_a["ex"]}% | **{eval_b["ex"]}%** | +{round(eval_b["ex"] - eval_a["ex"], 2)} pp |
+| **Multi-Turn Recovery Rate (MRR)** | {eval_a["mrr"]}% | **{eval_b["mrr"]}%** | +{round(eval_b["mrr"] - eval_a["mrr"], 2)} pp |
 
 ---
 
 ## 3. Scientific Takeaway
 
-* **Sample Efficiency**: Pre-grounding via Harness-Zero (Condition 4) seeds the agent policy with schema-inspection discipline (`inspect_schema`) and autonomous syntax error recovery. This eliminates the zero-reward exploration plateau, enabling RLVR to achieve positive rewards **{comp['speedup_milestone']}**.
-* **Asymptotic Ceiling**: Reinforcement learning starting from Harness-Zero reaches a higher final correctness ceiling (**+{comp['delta_test_suite_accuracy']} pp TS**), proving that procedural pre-training prevents policy collapse on complex SQL joins and subqueries.
+* **Sample Efficiency**: Pre-grounding via Harness-Zero (Condition 4) seeds the agent policy with schema-inspection discipline (`inspect_schema`) and autonomous syntax error recovery. This eliminates the zero-reward exploration plateau, enabling RLVR to achieve positive rewards **{comp["speedup_milestone"]}**.
+* **Asymptotic Ceiling**: Reinforcement learning starting from Harness-Zero reaches a higher final correctness ceiling (**+{comp["delta_test_suite_accuracy"]} pp TS**), proving that procedural pre-training prevents policy collapse on complex SQL joins and subqueries.
 """
 
 

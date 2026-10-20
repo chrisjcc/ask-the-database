@@ -113,7 +113,10 @@ def build_50_portability_benchmark(db_path: Path) -> list[dict[str, str]]:
         ("```sql\nSELECT name FROM users;\n```", "SELECT name FROM users"),
         ("```SQL\nSELECT count(*) FROM orders\n```", "SELECT count(*) FROM orders"),
         ("SELECT  u.name   FROM   users   u", "SELECT name FROM users"),
-        ("SELECT name AS user_name, age AS user_age FROM users", "SELECT name, age FROM users"),
+        (
+            "SELECT name AS user_name, age AS user_age FROM users",
+            "SELECT name, age FROM users",
+        ),
         (
             "SELECT * FROM users WHERE age > 20 AND age < 35",
             "SELECT * FROM users WHERE age < 35 AND age > 20",
@@ -126,7 +129,10 @@ def build_50_portability_benchmark(db_path: Path) -> list[dict[str, str]]:
             "SELECT department_name FROM departments WHERE budget = 500000.0",
             "SELECT department_name FROM departments WHERE budget = 500000",
         ),
-        ("SELECT name FROM users ORDER BY age ASC", "SELECT name FROM users ORDER BY age"),
+        (
+            "SELECT name FROM users ORDER BY age ASC",
+            "SELECT name FROM users ORDER BY age",
+        ),
         ("SELECT 100.0 * 2", "SELECT 200.0"),
         (
             "SELECT u.name FROM users u WHERE u.age >= (SELECT 25)",
@@ -156,9 +162,15 @@ def build_50_portability_benchmark(db_path: Path) -> list[dict[str, str]]:
     mismatch_queries = [
         ("SELECT nonexistent_col FROM users", "SELECT name FROM users"),
         ("SELECT * FROM nonexistent_table", "SELECT * FROM users"),
-        ("SELECT name FROM users WHERE age = 999", "SELECT name FROM users WHERE age = 25"),
+        (
+            "SELECT name FROM users WHERE age = 999",
+            "SELECT name FROM users WHERE age = 25",
+        ),
         ("SELECT department_id FROM users", "SELECT department_name FROM departments"),
-        ("SELECT name FROM users ORDER BY age DESC", "SELECT name FROM users ORDER BY age ASC"),
+        (
+            "SELECT name FROM users ORDER BY age DESC",
+            "SELECT name FROM users ORDER BY age ASC",
+        ),
         (
             "SELECT amount FROM orders WHERE amount > 1000",
             "SELECT amount FROM orders WHERE amount > 100",
@@ -167,7 +179,10 @@ def build_50_portability_benchmark(db_path: Path) -> list[dict[str, str]]:
             "SELECT user_id FROM orders WHERE amount = 0",
             "SELECT user_id FROM orders WHERE amount = 150",
         ),
-        ("SELECT count(*) FROM users WHERE age < 10", "SELECT count(*) FROM users WHERE age > 10"),
+        (
+            "SELECT count(*) FROM users WHERE age < 10",
+            "SELECT count(*) FROM users WHERE age > 10",
+        ),
         (
             "SELECT name FROM users WHERE name = 'Zoe'",
             "SELECT name FROM users WHERE name = 'Alice'",

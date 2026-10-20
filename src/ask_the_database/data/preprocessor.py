@@ -98,7 +98,9 @@ class DataPreprocessor:
         db_path = self.get_database_path(db_id)
         if not db_path:
             logger.warning(
-                "Database file for %s not found in %s, skipping.", db_id, self.databases_dir
+                "Database file for %s not found in %s, skipping.",
+                db_id,
+                self.databases_dir,
             )
             return None
 

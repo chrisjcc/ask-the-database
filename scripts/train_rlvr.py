@@ -128,11 +128,17 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
             Path(tmp_db_path).unlink(missing_ok=True)
 
         telemetry["status"] = "dry_run_completed"
-        logger.info("Dry-run validation completed successfully. Artifacts saved to %s", output_dir)
+        logger.info(
+            "Dry-run validation completed successfully. Artifacts saved to %s",
+            output_dir,
+        )
         return telemetry
 
     # Full Multi-Turn RLVR agent training loop over preprocessed dataset
-    logger.info("Executing Full Multi-Turn RLVR Agent training loop for output_dir=%s", output_dir)
+    logger.info(
+        "Executing Full Multi-Turn RLVR Agent training loop for output_dir=%s",
+        output_dir,
+    )
     processed_dir = Path(getattr(getattr(cfg, "paths", {}), "processed_dir", "data/processed"))
     train_path = processed_dir / "train.jsonl"
 
@@ -145,7 +151,8 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
         logger.info("Loaded %d training instances from %s", len(instances), train_path)
     else:
         logger.warning(
-            "Training split not found at %s. Falling back to synthetic instances.", train_path
+            "Training split not found at %s. Falling back to synthetic instances.",
+            train_path,
         )
 
     if not instances:
@@ -184,7 +191,10 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
             )
             logger.info("Initialized Weights & Biases run: rlvr_%s", run_name)
         except Exception as e:
-            logger.warning("Failed to initialize Weights & Biases: %s. Continuing without wandb.", e)
+            logger.warning(
+                "Failed to initialize Weights & Biases: %s. Continuing without wandb.",
+                e,
+            )
 
     logging_steps = int(getattr(training_cfg, "logging_steps", 5))
     save_steps = int(getattr(training_cfg, "save_steps", 50))
@@ -225,7 +235,7 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                     "mean_reward": mean_reward,
                     "min_reward": min(rollout_rewards) if rollout_rewards else 0.0,
                     "max_reward": max(rollout_rewards) if rollout_rewards else 0.0,
-                    "advantage_mean": sum(advantages) / len(advantages) if advantages else 0.0,
+                    "advantage_mean": (sum(advantages) / len(advantages) if advantages else 0.0),
                 },
                 step=step + 1,
             )
@@ -275,7 +285,8 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
 
     telemetry["status"] = "training_completed"
     logger.info(
-        "Multi-Turn RLVR Agent Training Completed successfully. Artifacts saved to %s", output_dir
+        "Multi-Turn RLVR Agent Training Completed successfully. Artifacts saved to %s",
+        output_dir,
     )
     return telemetry
 

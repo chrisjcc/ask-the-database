@@ -88,7 +88,9 @@ def test_three_turn_answer_with_recovery_bonus(sample_sqlite_db: Path) -> None:
     assert detailed.total_reward == 1.0
 
 
-def test_three_turn_answer_without_error_has_no_recovery_bonus(sample_sqlite_db: Path) -> None:
+def test_three_turn_answer_without_error_has_no_recovery_bonus(
+    sample_sqlite_db: Path,
+) -> None:
     """3-turn trajectory with clean tool calls receives discount but NO recovery bonus."""
     evaluator = MultiTurnRewardEvaluator(
         OmegaConf.create({"step_penalty": -0.05, "recovery_bonus": 0.3})

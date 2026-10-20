@@ -208,14 +208,22 @@ def test_dry_run_artifacts(tmp_path: Path) -> None:
     with (data_dir / "train.jsonl").open("w", encoding="utf-8") as f:
         f.write(
             json.dumps(
-                {"question": "Q", "gold_sql": "SELECT 1", "schema_ddl": "CREATE TABLE t (x INT);"}
+                {
+                    "question": "Q",
+                    "gold_sql": "SELECT 1",
+                    "schema_ddl": "CREATE TABLE t (x INT);",
+                }
             )
             + "\n"
         )
     with (data_dir / "val.jsonl").open("w", encoding="utf-8") as f:
         f.write(
             json.dumps(
-                {"question": "Q", "gold_sql": "SELECT 1", "schema_ddl": "CREATE TABLE t (x INT);"}
+                {
+                    "question": "Q",
+                    "gold_sql": "SELECT 1",
+                    "schema_ddl": "CREATE TABLE t (x INT);",
+                }
             )
             + "\n"
         )

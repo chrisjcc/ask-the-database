@@ -121,9 +121,9 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
 
         leaderboard[bench] = {
             "total_samples": total,
-            "test_suite_accuracy_ts": round(ts_passed / total * 100, 2) if total else 0.0,
-            "execution_accuracy_ex": round(ex_passed / total * 100, 2) if total else 0.0,
-            "valid_execution_rate_va": round(valid_count / total * 100, 2) if total else 0.0,
+            "test_suite_accuracy_ts": (round(ts_passed / total * 100, 2) if total else 0.0),
+            "execution_accuracy_ex": (round(ex_passed / total * 100, 2) if total else 0.0),
+            "valid_execution_rate_va": (round(valid_count / total * 100, 2) if total else 0.0),
             "recovery_rate_mrr": (
                 round(recoveries / max(1, total - ex_passed) * 100, 2) if total else 0.0
             ),

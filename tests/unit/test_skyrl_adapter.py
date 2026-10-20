@@ -26,7 +26,9 @@ def test_skyrl_env_reset(sample_sqlite_db: Path) -> None:
     assert "system:" in obs
 
 
-def test_skyrl_env_multiturn_interaction_and_final_answer(sample_sqlite_db: Path) -> None:
+def test_skyrl_env_multiturn_interaction_and_final_answer(
+    sample_sqlite_db: Path,
+) -> None:
     """Test sequence of tool calls followed by a correct final answer."""
     cfg = OmegaConf.create({"max_turns": 5, "step_penalty": -0.05})
     env = SkyRLSQLEnvironment(cfg)

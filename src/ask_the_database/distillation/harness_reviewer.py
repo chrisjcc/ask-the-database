@@ -102,7 +102,7 @@ class ReviewDecision:
             "rationale": self.rationale,
             "turn_index": self.turn_index,
             "is_replacement": self.is_replacement,
-            "formatted_replacement": self.formatted_replacement if self.is_replacement else "",
+            "formatted_replacement": (self.formatted_replacement if self.is_replacement else ""),
         }
 
 
@@ -295,7 +295,9 @@ class HarnessReviewer:
         if not literals:
             # Fallback regex for WHERE col = 'val' or LIKE '%val%'
             where_match = re.search(
-                r"WHERE\s+(.*?)(?:ORDER|GROUP|LIMIT|$)", clean, re.IGNORECASE | re.DOTALL
+                r"WHERE\s+(.*?)(?:ORDER|GROUP|LIMIT|$)",
+                clean,
+                re.IGNORECASE | re.DOTALL,
             )
             if where_match:
                 where_clause = where_match.group(1)
@@ -459,7 +461,10 @@ class HarnessReviewer:
         # -------------------------------------------------------------
         # Rule 1: RequireSchemaInspection (Priority 100)
         # -------------------------------------------------------------
-        if self.rule_schema_inspection_enabled and action_name in ("execute_sql", "final_answer"):
+        if self.rule_schema_inspection_enabled and action_name in (
+            "execute_sql",
+            "final_answer",
+        ):
             query_str = str(action_payload).strip()
             referenced_tables = self._extract_tables_from_query(query_str)
 
@@ -504,7 +509,10 @@ class HarnessReviewer:
         # -------------------------------------------------------------
         # Rule 2: RequireRowSampling (Priority 80)
         # -------------------------------------------------------------
-        if self.rule_row_sampling_enabled and action_name in ("execute_sql", "final_answer"):
+        if self.rule_row_sampling_enabled and action_name in (
+            "execute_sql",
+            "final_answer",
+        ):
             query_str = str(action_payload).strip()
             literals = self._extract_string_literals_in_where(query_str)
             if literals:

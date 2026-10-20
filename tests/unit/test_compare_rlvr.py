@@ -1,7 +1,8 @@
 """Unit tests for scripts/compare_rlvr_efficiency.py."""
 
-from pathlib import Path
 import json
+from pathlib import Path
+
 import pytest
 
 from scripts.compare_rlvr_efficiency import (
@@ -62,11 +63,27 @@ def test_compare_runs_real_files(tmp_path: Path) -> None:
     eval_a = tmp_path / "eval_a.json"
     eval_b = tmp_path / "eval_b.json"
     eval_a.write_text(
-        json.dumps({"spider": {"test_suite_accuracy_ts": 52.0, "execution_accuracy_ex": 58.0, "recovery_rate_mrr": 20.0}}),
+        json.dumps(
+            {
+                "spider": {
+                    "test_suite_accuracy_ts": 52.0,
+                    "execution_accuracy_ex": 58.0,
+                    "recovery_rate_mrr": 20.0,
+                }
+            }
+        ),
         encoding="utf-8",
     )
     eval_b.write_text(
-        json.dumps({"spider": {"test_suite_accuracy_ts": 60.0, "execution_accuracy_ex": 66.0, "recovery_rate_mrr": 40.0}}),
+        json.dumps(
+            {
+                "spider": {
+                    "test_suite_accuracy_ts": 60.0,
+                    "execution_accuracy_ex": 66.0,
+                    "recovery_rate_mrr": 40.0,
+                }
+            }
+        ),
         encoding="utf-8",
     )
 

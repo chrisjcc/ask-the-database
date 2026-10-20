@@ -16,7 +16,10 @@ logger = logging.getLogger(__name__)
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def main(cfg: DictConfig) -> None:
     """Run SFT warmup training using Hydra configuration."""
-    logger.info("Initializing SFT Warmup Pipeline with configuration:\n%s", OmegaConf.to_yaml(cfg))
+    logger.info(
+        "Initializing SFT Warmup Pipeline with configuration:\n%s",
+        OmegaConf.to_yaml(cfg),
+    )
 
     pipeline = SFTWarmupPipeline(cfg)
 

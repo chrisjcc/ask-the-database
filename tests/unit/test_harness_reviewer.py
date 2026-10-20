@@ -89,7 +89,9 @@ def test_rule_require_schema_inspection_trigger(sample_sqlite_db: Path) -> None:
     assert "departments" in [t.lower() for t in decision2.replacement_payload]
 
 
-def test_rule_require_schema_inspection_pass_after_inspection(sample_sqlite_db: Path) -> None:
+def test_rule_require_schema_inspection_pass_after_inspection(
+    sample_sqlite_db: Path,
+) -> None:
     """Rule 1: Pass proposal when referenced tables have already been inspected."""
     reviewer = HarnessReviewer()
     db_path = str(sample_sqlite_db)
@@ -230,21 +232,27 @@ def test_intervention_budget_exhaustion(sample_sqlite_db: Path) -> None:
 
     # Intervention 1
     d1 = reviewer.review(
-        "<final_answer>SELECT * FROM users;</final_answer>", db_path=db_path, turn_index=1
+        "<final_answer>SELECT * FROM users;</final_answer>",
+        db_path=db_path,
+        turn_index=1,
     )
     assert d1.is_replacement is True
     assert reviewer.history.interventions_count == 1
 
     # Intervention 2
     d2 = reviewer.review(
-        "<final_answer>SELECT * FROM departments;</final_answer>", db_path=db_path, turn_index=2
+        "<final_answer>SELECT * FROM departments;</final_answer>",
+        db_path=db_path,
+        turn_index=2,
     )
     assert d2.is_replacement is True
     assert reviewer.history.interventions_count == 2
 
     # Intervention 3 -> Budget reached (2/2), proposal must pass
     d3 = reviewer.review(
-        "<final_answer>SELECT * FROM orders;</final_answer>", db_path=db_path, turn_index=3
+        "<final_answer>SELECT * FROM orders;</final_answer>",
+        db_path=db_path,
+        turn_index=3,
     )
     assert d3.decision == "PASS"
     assert d3.is_pass is True
@@ -290,9 +298,15 @@ def test_strip_reviewer_metadata_from_chat() -> None:
     chat = [
         {"role": "system", "content": "You are a database agent."},
         {"role": "user", "content": "Database: company\nQuestion: Find users"},
-        {"role": "assistant", "content": '<tool name="inspect_schema">["users"]</tool>'},
+        {
+            "role": "assistant",
+            "content": '<tool name="inspect_schema">["users"]</tool>',
+        },
         {"role": "tool", "content": "CREATE TABLE users (id INT);"},
-        {"role": "reviewer_thought", "content": "Teacher private rationale that must not leak"},
+        {
+            "role": "reviewer_thought",
+            "content": "Teacher private rationale that must not leak",
+        },
     ]
 
     clean = HarnessReviewer.strip_reviewer_metadata_from_chat(chat)

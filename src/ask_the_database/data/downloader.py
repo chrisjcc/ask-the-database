@@ -60,7 +60,10 @@ class DatasetDownloader:
                     target_dir.mkdir(parents=True, exist_ok=True)
                     target_file = target_dir / Path(member).name
 
-                    with archive.open(member) as source, open(target_file, "wb") as target:
+                    with (
+                        archive.open(member) as source,
+                        open(target_file, "wb") as target,
+                    ):
                         shutil.copyfileobj(source, target)
 
         flag_file.write_text("extraction_complete\n")

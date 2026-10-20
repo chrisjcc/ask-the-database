@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 def main(cfg: DictConfig) -> None:
     """Run single-turn GRPO baseline training using Hydra configuration."""
     logger.info(
-        "Initializing GRPO Baseline Training with configuration:\n%s", OmegaConf.to_yaml(cfg)
+        "Initializing GRPO Baseline Training with configuration:\n%s",
+        OmegaConf.to_yaml(cfg),
     )
 
     rubric = SQLRewardRubric(getattr(cfg, "reward", None))

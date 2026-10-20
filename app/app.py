@@ -96,7 +96,7 @@ def main() -> None:
                         st.write(f"**Turn {step['turn']}:** `{step['action']}`")
                         st.code(
                             step["output"],
-                            language="sql" if "SELECT" in str(step["output"]).upper() else "text",
+                            language=("sql" if "SELECT" in str(step["output"]).upper() else "text"),
                         )
             if msg.get("query"):
                 st.markdown(f"### Final SQL Query:\n```sql\n{msg['query']}\n```")

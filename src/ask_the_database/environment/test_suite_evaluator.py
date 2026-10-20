@@ -33,7 +33,9 @@ class TestSuiteEvaluator:
     def __init__(self, num_mutations: int = 4, comparator: Any = None) -> None:
         self.num_mutations = num_mutations
         if comparator is None:
-            from ask_the_database.rewards.execution_reward import ExecutionEquivalenceEvaluator
+            from ask_the_database.rewards.execution_reward import (
+                ExecutionEquivalenceEvaluator,
+            )
 
             self.comparator = ExecutionEquivalenceEvaluator()
         else:
