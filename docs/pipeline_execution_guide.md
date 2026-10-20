@@ -198,16 +198,18 @@ make collect-distillation ARGS="--dry-run"
 make collect-distillation
 ```
 * **Teacher Backend Options:**
-  - **Google Gemini 2.0 Flash (Default, Free Tier via `GEMINI_API_KEY`):**
+  - **Deterministic Pure Rule Engine (Default — 100% Offline, Zero API Calls):**
+    Automatically used by `make collect-distillation`, or explicitly via:
+    ```bash
+    make collect-distillation ARGS="--teacher-backend rule"
+    # Or directly:
+    python3 scripts/collect_reviewed_trajectories.py --teacher-backend rule
+    ```
+  - **Optional: Google Gemini 2.0 Flash (External LLM Teacher via `GEMINI_API_KEY`):**
     ```bash
     python3 scripts/collect_reviewed_trajectories.py \
       --teacher-backend litellm \
       --teacher-model gemini/gemini-2.0-flash
-    ```
-  - **Deterministic Pure Rule Engine (100% Offline, Zero Network Requests):**
-    ```bash
-    python3 scripts/collect_reviewed_trajectories.py \
-      --teacher-backend rule
     ```
 
 ```bash
