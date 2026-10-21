@@ -71,8 +71,11 @@ The system architecture is structured across five modular phases:
 
 ## 📚 Comprehensive Documentation
 
-The complete technical design and phase-by-phase execution manuals are documented in `docs/`:
+The complete technical design, operational execution manuals, and research studies are documented in `docs/`:
 
+* 🚀 **[End-to-End Pipeline Execution Guide](docs/pipeline_execution_guide.md)**: Operational manual for training, distillation, RLVR, and benchmark evaluation.
+* 🔬 **[Harness-Zero MVE Final Research Report](docs/research/harness-zero/mve_final_report.md)**: Empirical 4-condition MVE results, decision gate adjudication, and GRPO convergence analysis.
+* 📄 **[Harness-Zero Feasibility Study](docs/research/harness-zero/feasibility_study.md)**: Theoretical foundation, agent-as-harness methodology, and post-training architecture.
 * 📖 **[Master Architecture Plan](docs/nl2sql_post_training_architecture_plan.md)**: End-to-end blueprint covering data synthesis, reward engineering, GRPO/SkyRL algorithms, and ablation methodology.
 * 🛠️ **[Phase 1 Implementation Plan](docs/ask_the_database_phase1_implementation_plan.md)**: Repository Foundation, SSoT Architecture & DB Sandbox.
 * ⚖️ **[Phase 2 Implementation Plan](docs/ask_the_database_phase2_implementation_plan.md)**: Verifiable Reward Engine & Test-Suite Verification.

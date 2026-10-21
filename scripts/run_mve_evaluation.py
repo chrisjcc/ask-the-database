@@ -7,7 +7,7 @@ Evaluates the 4 conditions:
 4. Harness-Zero SFT (Proposed)
 
 Adjudicates the Pre-Experimental Decision Gate and publishes:
-`docs/research/mve_harness_zero_results.md`.
+`docs/research/harness-zero/mve_final_report.md`.
 
 Usage:
     python scripts/run_mve_evaluation.py --dry-run
@@ -145,7 +145,7 @@ def get_empirical_mve_metrics() -> list[ConditionMetrics]:
 
 def run_mve_adjudication(
     config_path: str | Path | None = None,
-    report_output_path: str | Path = "docs/research/mve_harness_zero_results.md",
+    report_output_path: str | Path = "docs/research/harness-zero/mve_final_report.md",
     summary_output_path: str | Path = "results/mve_evaluation_summary.json",
     dry_run: bool = False,
 ) -> MVEReport:
@@ -190,7 +190,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--report-output",
         type=str,
-        default="docs/research/mve_harness_zero_results.md",
+        default="docs/research/harness-zero/mve_final_report.md",
         help="Destination path for Markdown research report.",
     )
     parser.add_argument(

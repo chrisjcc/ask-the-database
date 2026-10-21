@@ -3,7 +3,7 @@
 
 **Date:** October 2026  
 **Project:** [AskTheDatabase](https://github.com/chrisjcc/ask-the-database)  
-**Target Document:** `docs/research/harness-zero-feasibility-study.md`  
+**Target Document:** `docs/research/harness-zero/feasibility_study.md`  
 **Primary Reference:** *Harness-Zero: Harness Distillation via Agent-as-Harness* (Ye et al., 2026, [arXiv:2609.24974](https://arxiv.org/abs/2609.24974), [Official Code](https://github.com/metaevo-ai/harness-zero))
 
 ---
@@ -453,7 +453,7 @@ To proceed with implementation, the following discrete tasks are ready to be con
 - Run LoRA SFT training across Conditions 2, 3, and 4.
 - Evaluate all checkpoints using `scripts/evaluate_benchmark.py` on Spider Dev and Spider-Realistic.
 - Log evaluation curves and metrics to W&B / Weave.
-- Synthesize findings into `docs/research/mve_harness_zero_results.md` and trigger the Go/No-Go decision gate.
+- Synthesize findings into `docs/research/harness-zero/mve_final_report.md` and trigger the Go/No-Go decision gate.
 
 ---
 

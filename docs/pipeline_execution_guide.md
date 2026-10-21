@@ -1,22 +1,44 @@
-# Step-by-Step Guide: End-to-End Training, Evaluation & Harness-Zero MVE Pipeline
+# Step-by-Step Guide: End-to-End Training & Evaluation Pipeline
 
-This operational guide provides end-to-end instructions for running the complete `AskTheDatabase` training, evaluation, Minimum Viable Experiment (MVE), and Harness-Zero distillation pipeline on a remote compute server using `make` commands.
+This operational guide provides end-to-end instructions for running the complete `AskTheDatabase` training, distillation, reinforcement learning, and evaluation pipeline on remote compute servers or HPC GPU clusters using `make` commands.
+
+> [!NOTE]
+> **Research & Experimental Findings:**  
+> For the theoretical feasibility study, 4-condition Minimum Viable Experiment (MVE) validation protocol, decision gate adjudications, and RLVR sample efficiency analysis, refer to the dedicated research track in [`docs/research/harness-zero/mve_final_report.md`](research/harness-zero/mve_final_report.md) and [`docs/research/harness-zero/feasibility_study.md`](research/harness-zero/feasibility_study.md).
 
 ```
-                      End-to-End Operational Pipeline & MVE Architecture
-  ┌───────────────┐     ┌────────────────────────────────────────────────────────┐
-  │ 1. Preprocess │ ──> │ 2. MVE Conditions (500 Samples / Unseen Schemas)       │
-  └───────────────┘     │  • Cond 1: Base Student (Zero-Shot)                   │
-                        │  • Cond 2: Conventional SFT Baseline (Gold Data)       │
-                        │  • Cond 3: Rejection Sampling (Filtered Rollouts)     │
-                        │  • Cond 4: Harness-Zero SFT (K_SQL Distillation)      │
-                        └───────────────────────────┬────────────────────────────┘
-                                                    │
-                                                    ▼
-  ┌─────────────────┐                        ┌────────────────┐
-  │ 4. Cond 5 RLVR  │ <───────────────────── │ 3. MVE Report  │
-  │  (Cond 2 vs 4)  │   (Gate: GO Passed)    │ (Adjudication) │
-  └─────────────────┘                        └────────────────┘
+                      End-to-End Operational Pipeline Architecture
+   ┌─────────────────┐       ┌────────────────────────────────────────────────────────┐
+   │ 0. Server Setup │ ───>  │ 1. Data Preprocessing (Spider Schemas & Splits)        │
+   └─────────────────┘       └───────────────────────────┬────────────────────────────┘
+                                                         │
+                                                         ▼
+   ┌──────────────────────────────────────────────────────────────────────────────────┐
+   │ 2. Supervised Fine-Tuning & Distillation                                         │
+   │    • 2.1 Conventional SFT Warmup (`make train-sft`)                              │
+   │    • 2.2 Harness-Zero Trajectory Distillation (`make collect-distillation` / SFT) │
+   └─────────────────────────────────────┬────────────────────────────────────────────┘
+                                         │
+                                         ▼
+   ┌──────────────────────────────────────────────────────────────────────────────────┐
+   │ 3. Multi-Turn RLVR Agent Training (SkyRL / GRPO in `SkyRLSQLEnvironment`)       │
+   │    • 3.1 Fast Dry-Run Smoke Test (`make train-grpo ARGS="dry_run=true"`)         │
+   │    • 3.2 Single-Node Policy Training (`make train-grpo`)                         │
+   │    • 3.3 Multi-GPU Cluster Sweeps (`sbatch scripts/slurm/launch_rlvr_sweep.sh`)  │
+   └─────────────────────────────────────┬────────────────────────────────────────────┘
+                                         │
+                                         ▼
+   ┌──────────────────────────────────────────────────────────────────────────────────┐
+   │ 4. Benchmark Evaluation & Telemetry                                              │
+   │    • 4.1 Benchmark Evaluation (`make evaluate`)                                  │
+   │    • 4.2 Sample Efficiency & Accuracy Comparison (`make compare-rlvr`)           │
+   │    • 4.3 Weights & Biases Live Telemetry                                         │
+   └─────────────────────────────────────┬────────────────────────────────────────────┘
+                                         │
+                                         ▼
+   ┌──────────────────────────────────────────────────────────────────────────────────┐
+   │ 5. Local Serving & Interactive UI (`streamlit run app/streamlit_app.py`)         │
+   └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -82,128 +104,52 @@ make preprocess
 
 ---
 
-## 2. The 4-Condition Minimum Viable Experiment (MVE)
+## 2. Supervised Fine-Tuning & Distillation
 
-The Minimum Viable Experiment (MVE) establishes whether agent-as-harness distillation delivers measurable generalization improvements over conventional baselines on unseen database schemas *before* allocating cluster-scale compute.
+### 2.1 Conventional SFT Baseline Training
 
-The MVE systematically evaluates four controlled conditions:
-1. **Condition 1**: Base Student (Zero-Shot) — unguided baseline without training.
-2. **Condition 2**: Conventional SFT Baseline — fine-tuned on gold-standard Spider demonstrations (`make train-sft`).
-3. **Condition 3**: Rejection Sampling Baseline — fine-tuned on self-generated rollouts filtered for test-suite correctness ($TS = 1.0$).
-4. **Condition 4**: Harness-Zero SFT (Proposed) — fine-tuned on on-policy rollouts reviewed and repaired by the reference harness $\mathcal{K}_{\text{SQL}}$ (`make train-harness-zero`).
-
----
-
-### Condition 1: Base Student (Zero-Shot)
-
-Evaluate the unguided base model directly under the tool environment without fine-tuning:
+Train the base model on ground-truth static text-to-SQL demonstration pairs using LoRA ($r=16, \alpha=32$):
 
 ```bash
-# Evaluate Condition 1 on benchmark suites
-python3 scripts/evaluate_benchmark.py \
-  evaluation.model_path="Qwen/Qwen2.5-Coder-7B-Instruct" \
-  evaluation.output_dir="results/cond1" \
-  evaluation.summary_file="results/cond1/summary.json"
-```
-*(If using the 1.5B model, replace with `evaluation.model_path="Qwen/Qwen2.5-Coder-1.5B-Instruct"`)*
+# Fast dry-run check (< 1 second verification):
+make train-sft ARGS="dry_run=true"
 
----
-
-### Condition 2: Conventional SFT Baseline
-
-Train the base model on ground-truth static text-to-SQL pairs using LoRA ($r=16, \alpha=32$):
-
-```bash
-# Full dataset training (Default: Qwen2.5-Coder-7B-Instruct, ~15.2 GB download)
+# Full dataset training (Default: Qwen2.5-Coder-7B-Instruct):
 make train-sft
 
 # Lightweight 1.5B alternative:
 make train-sft ARGS="model=qwen2_5_coder_1_5b"
 
-# Focused MVE Baseline: 500 gold demonstrations into MVE checkpoint directory
-make train-sft ARGS="training.output_dir=models/mve/sft_baseline data.max_samples=500"
-
-# Fast dry-run check:
-make train-sft ARGS="dry_run=true"
+# Subsampled warmup run (e.g. 500 samples):
+make train-sft ARGS="training.output_dir=models/sft/warmup data.max_samples=500"
 ```
-* **Resulting Checkpoint:** `models/sft/checkpoint-final` (or `models/mve/sft_baseline`)
-
-```bash
-# Evaluate Condition 2
-python3 scripts/evaluate_benchmark.py \
-  evaluation.model_path="models/mve/sft_baseline" \
-  evaluation.output_dir="results/cond2" \
-  evaluation.summary_file="results/cond2/summary.json"
-```
+* **Resulting Checkpoint:** `models/sft/checkpoint-final` (or custom `training.output_dir`)
 
 ---
 
-### Condition 3: Successful-Rollout Filtering Baseline (Rejection Sampling)
+### 2.2 Harness-Zero Procedural Trajectory Distillation
 
-Sample trajectories generated by the student, filter out any failures, and train strictly on rollouts that achieve Test-Suite Correctness ($TS = 1.0$) with zero interventions:
-
-```bash
-# Step 1: Collect rejection sampling rollouts with rule engine
-python3 scripts/collect_reviewed_trajectories.py \
-  --output data/distillation/filtered_rollouts.jsonl \
-  --metrics-output data/distillation/filtered_metrics.json \
-  --teacher-backend rule
-
-# Step 2: Train SFT on filtered successful rollouts
-make train-filtered
-
-# Or lightweight 1.5B alternative:
-make train-filtered ARGS="model=qwen2_5_coder_1_5b"
-```
-
-* **Resulting Checkpoint:** `models/mve/filtered_rollouts`
-
-```bash
-# Evaluate Condition 3
-python3 scripts/evaluate_benchmark.py \
-  evaluation.model_path="models/mve/filtered_rollouts" \
-  evaluation.output_dir="results/cond3" \
-  evaluation.summary_file="results/cond3/summary.json"
-```
-
----
-
-### Condition 4: Harness-Zero SFT (Proposed Method)
-
-Condition 4 evaluates the core contribution of the Harness-Zero paradigm: fine-tuning the student policy on on-policy rollouts reviewed and minimally corrected by the reference harness $\mathcal{K}_{\text{SQL}}$.
-
-> **Why `make train-harness-zero` is pre-configured specifically for Condition 4:**  
-> In this repository's Makefile convention:
-> - `make train-sft`: fine-tunes the baseline model on static gold demonstrations (Condition 2).
-> - `make train-harness-zero`: fine-tunes the proposed student on the Harness-Zero reviewed trajectory dataset (`data/distillation/reviewed_trajectories.jsonl`).
-> Both commands invoke the shared `scripts/train_sft.py` engine with appropriate dataset overrides. By default, it fine-tunes `Qwen/Qwen2.5-Coder-7B-Instruct` (or `1.5B` via `ARGS="model=qwen2_5_coder_1_5b"`).
+Fine-tune the student policy on on-policy multi-turn rollouts reviewed and repaired by the reference review harness $\mathcal{K}_{\text{SQL}}$ to internalize schema inspection and error recovery behaviors:
 
 > [!TIP]
 > **Why run dry runs first?**  
-> The dry runs are 5-second smoke tests designed to catch configuration, environment, database path, and syntax errors without wasting GPU compute or waiting hours:
-> 1. `python3 scripts/collect_reviewed_trajectories.py --dry-run` (or `make collect-distillation ARGS="--dry-run"`):
->    - Collects only 5 sample episodes (instead of the full 500).
->    - Verifies that SQLite database paths, reference harness rules, and trajectory export work properly without crashing.
-> 2. `make train-harness-zero ARGS="dry_run=true"`:
->    - Loads 5 samples from the dataset.
->    - Verifies the tokenizer, LoRA adapter configuration, and output directory creation in ~1 second to ensure that full training won't crash when launched.
+> Dry runs are 5-second smoke tests designed to catch configuration, environment, database path, and syntax errors without allocating long-running GPU compute:
+> 1. `make collect-distillation ARGS="--dry-run"` verifies SQLite paths, reference rules, and JSONL export.
+> 2. `make train-harness-zero ARGS="dry_run=true"` verifies tokenizer loading, LoRA configuration, and optimizer allocation.
 
+#### Step 1: Collect Reviewed Trajectories
 ```bash
-# Step 1: Collect stratified reviewed trajectories
 # Fast dry-run smoke test (5 sample episodes to verify pipeline health):
 make collect-distillation ARGS="--dry-run"
-# (or directly: python3 scripts/collect_reviewed_trajectories.py --dry-run)
 
-# Full collection: Collect 500 stratified reviewed trajectories (150 Medium, 200 Hard, 150 Extra):
+# Full collection: Collect stratified reviewed trajectories:
 make collect-distillation
 ```
+
 * **Teacher Backend Options:**
   - **Deterministic Pure Rule Engine (Default — 100% Offline, Zero API Calls):**
-    Automatically used by `make collect-distillation`, or explicitly via:
     ```bash
     make collect-distillation ARGS="--teacher-backend rule"
-    # Or directly:
-    python3 scripts/collect_reviewed_trajectories.py --teacher-backend rule
     ```
   - **Optional: Google Gemini 2.0 Flash (External LLM Teacher via `GEMINI_API_KEY`):**
     ```bash
@@ -212,153 +158,110 @@ make collect-distillation
       --teacher-model gemini/gemini-2.0-flash
     ```
 
+#### Step 2: Fine-Tune on Reviewed Trajectories
 ```bash
-# Step 2: Fine-tune on reviewed trajectories
 # Fast dry-run check (< 1 second verification):
 make train-harness-zero ARGS="dry_run=true"
 
 # Full training on reviewed trajectories:
-make train-harness-zero ARGS="training.output_dir=models/mve/harness_zero"
+make train-harness-zero ARGS="training.output_dir=models/sft/harness_zero"
 
 # Lightweight 1.5B alternative:
-make train-harness-zero ARGS="model=qwen2_5_coder_1_5b training.output_dir=models/mve/harness_zero"
+make train-harness-zero ARGS="model=qwen2_5_coder_1_5b training.output_dir=models/sft/harness_zero"
 ```
-* **Resulting Checkpoint:** `models/mve/harness_zero` (or `models/sft/harness_zero`)
-
-```bash
-# Evaluate Condition 4
-python3 scripts/evaluate_benchmark.py \
-  evaluation.model_path="models/mve/harness_zero" \
-  evaluation.output_dir="results/cond4" \
-  evaluation.summary_file="results/cond4/summary.json"
-```
+* **Resulting Checkpoint:** `models/sft/harness_zero`
 
 ---
 
-## 3. MVE Decision Gate Adjudication & Report Generation
+## 3. Multi-Turn Reinforcement Learning (RLVR / GRPO)
 
-Run the automated decision gate evaluator to compute empirical margins across all 4 conditions, test formal stop conditions, and publish the research report:
+Train agent policies in `SkyRLSQLEnvironment` using Group Relative Policy Optimization (GRPO) with multi-turn verifiable rewards (test-suite correctness, execution accuracy, AST validity, and error recovery bonus).
 
+### 3.1 Fast Dry-Run Smoke Test
+Always verify environment initialization, rollout buffering, and reward computation before launching long training jobs:
 ```bash
-make evaluate-mve
-```
-
-This runs [`scripts/run_mve_evaluation.py`](file:///Users/christiancontrerascampana/Desktop/GitHub/text-to-sql/ask-the-database/scripts/run_mve_evaluation.py) against [`configs/distillation/mve_conditions.yaml`](file:///Users/christiancontrerascampana/Desktop/GitHub/text-to-sql/ask-the-database/configs/distillation/mve_conditions.yaml) and outputs:
-1. **Serialized JSON Summary**: `results/mve_evaluation_summary.json`
-2. **Markdown Research Report**: `docs/research/mve_harness_zero_results.md` and `docs/research/mve_harness_zero_distillation.md`
-
-### Decision Gate Thresholds:
-
-* **Primary Gate (Generalization Gain)**:
-  $\Delta \text{TS}{4-2} \ge +5.0,\text{pp} \quad \text{and} \quad \Delta \text{TS}{4-3} \ge +3.0,\text{pp}$
-* **Behavioral Gate (Error Recovery)**:
-  $$\text{Relative Gain in } R_{\text{rec}} \ge +20.0\% \text{ over Condition 2}$$
-* **Efficiency Gate (Trajectory Turns)**:
-  $$\Delta \text{Turns} \le +1.5 \text{ turns over Condition 1}$$
-* **Stop Conditions**: Verifies that Condition 4 does not perform within $\pm 1.5\text{ pp}$ of Condition 2 and is not matched by rejection sampling alone.
-
----
-
-## 4. Condition 5: Multi-Turn RLVR / GRPO Sample Efficiency Comparison
-
-Once `make evaluate-mve` yields **`Adjudication Verdict: GO`**, execute Condition 5 to measure reinforcement learning sample efficiency and asymptotic correctness:
-
-### Step 4.1: Train Both Policies via GRPO
-
-Train agent policies using Group Relative Policy Optimization (GRPO) in `SkyRLSQLEnvironment` comparing initialization from Condition 2 vs. Condition 4:
-
-> [!TIP]
-> **Why run the dry run first?**  
-> The dry-run smoke test (`make train-grpo ARGS="dry_run=true"`) executes a 5-step mock GRPO loop in ~5 seconds. It verifies environment initialization (`SkyRLSQLEnvironment`), LoRA adapter configuration, rollout buffering, multi-turn reward rubric computation, and W&B logging without wasting GPU compute or crashing mid-run.
-
-```bash
-# Fast dry-run smoke test (< 5 seconds verification):
 make train-grpo ARGS="dry_run=true"
-
-# Run A: RLVR initialized from Condition 2 baseline checkpoint
-make train-grpo ARGS="training.model_path=models/mve/sft_baseline training.output_dir=models/rlvr/from_cond2 training.max_steps=200"
-
-# Run B: RLVR initialized from Condition 4 Harness-Zero distilled checkpoint
-make train-grpo ARGS="training.model_path=models/mve/harness_zero training.output_dir=models/rlvr/from_cond4 training.max_steps=200"
-```
-* **Resulting Checkpoints & States:**
-  - `models/rlvr/from_cond2/training_state.json`
-  - `models/rlvr/from_cond4/training_state.json`
-
-### Step 4.2: Evaluate Checkpoints on Held-Out Benchmark
-
-Evaluate both trained checkpoints to measure asymptotic correctness on unseen databases:
-
-```bash
-# Evaluate Run A (Condition 2 -> RLVR)
-python3 scripts/evaluate_benchmark.py \
-  evaluation.model_path="models/rlvr/from_cond2" \
-  evaluation.output_dir="results/rlvr_from_cond2" \
-  evaluation.summary_file="results/rlvr_from_cond2/summary.json"
-
-# Evaluate Run B (Condition 4 Harness-Zero -> RLVR)
-python3 scripts/evaluate_benchmark.py \
-  evaluation.model_path="models/rlvr/from_cond4" \
-  evaluation.output_dir="results/rlvr_from_cond4" \
-  evaluation.summary_file="results/rlvr_from_cond4/summary.json"
 ```
 
-### Step 4.3: Compare Sample Efficiency & Asymptotic Correctness
-
-Run the automated comparison script to quantify convergence speed, cumulative reward AUC, and asymptotic test-suite accuracy gains:
+### 3.2 Single-Node Policy Training
+Train the agent policy starting from either an SFT baseline or the Harness-Zero distilled checkpoint:
 
 ```bash
-make compare-rlvr
+# Train starting from Harness-Zero checkpoint (Recommended for fast convergence):
+make train-grpo ARGS="training.model_path=models/sft/harness_zero training.output_dir=models/rlvr/harness_zero_grpo training.max_steps=200"
+
+# Train starting from Conventional SFT baseline:
+make train-grpo ARGS="training.model_path=models/sft/checkpoint-final training.output_dir=models/rlvr/baseline_grpo training.max_steps=200"
 ```
-*(Or run directly: `python3 scripts/compare_rlvr_efficiency.py`)*
+* **Resulting Checkpoint:** `models/rlvr/.../training_state.json` and policy adapter weights.
 
-Outputs generated:
-1. **Markdown Report:** `results/rlvr_sample_efficiency_report.md`
-2. **JSON Summary:** `results/rlvr_sample_efficiency_summary.json`
-
-### Step 4.4: Weights & Biases (W&B) Dashboard Inspection
-
-When `training.report_to=wandb` is enabled (default in `configs/training/rlvr_skyrl_agent.yaml`), both runs log under project `ask-the-database`.
-
-In the W&B dashboard, create an overlay workspace comparing `rlvr_from_cond2` vs. `rlvr_from_cond4`:
-
-1. **`mean_reward` vs. `step` (Primary Convergence Speed Metric)**:
-   - **X-axis**: `step` (0 to 200).
-   - **Y-axis**: `mean_reward` (bounded between -1.0 and +1.0).
-   - **What to look for**:
-     - **Initial Zero-Crossing ($R > 0$)**: Run B should cross the positive reward threshold much earlier than Run A (e.g., within 20–40 steps vs. 100+ steps), demonstrating superior sample efficiency.
-     - **Initial Slope**: Steep rise in Run B vs. flat exploration plateau in Run A.
-2. **`advantage_mean` vs. `step` (Gradient Learning Signal)**:
-   - **What to look for**: Confirms healthy policy gradient updates without variance collapse.
-3. **`min_reward` & `max_reward` vs. `step` (Rollout Variance Envelope)**:
-   - **What to look for**: Highlights group diversity among the 4 parallel rollouts per prompt.
-
----
-
-## 5. Scaling Beyond MVE: Full-Cluster Distributed Sweeps
-
-With the MVE decision gates validated and the Condition 4 distilled checkpoint ready, scale multi-turn GRPO across Slurm GPU clusters:
-
+### 3.3 Scaling to Cluster Infrastructure: Distributed Slurm Sweeps
+To scale multi-turn GRPO across HPC GPU clusters (such as DESY Maxwell):
 ```bash
-# Launch multi-GPU hyperparameter array sweeps on Slurm:
 sbatch scripts/slurm/launch_rlvr_sweep.sh
 ```
 
 ---
 
-## 6. Summary of Makefile Operational Commands
+## 4. Benchmark Evaluation & Telemetry
+
+### 4.1 Benchmark Evaluation on Held-Out Splits
+Evaluate any saved checkpoint across standard Spider splits and robustness variants (`spider_dev`, `spider_realistic`):
+
+```bash
+# Evaluate checkpoint
+python3 scripts/evaluate_benchmark.py \
+  evaluation.model_path="models/rlvr/harness_zero_grpo" \
+  evaluation.output_dir="results/rlvr_eval" \
+  evaluation.summary_file="results/rlvr_eval/summary.json"
+```
+
+### 4.2 Compare RLVR Sample Efficiency & Asymptotic Accuracy
+Quantify convergence speed, cumulative reward AUC, and held-out test-suite gains between two comparative training runs:
+
+```bash
+make compare-rlvr
+```
+*(Or specify explicit paths: `python3 scripts/compare_rlvr_efficiency.py --run-a-dir models/rlvr/baseline_grpo --run-b-dir models/rlvr/harness_zero_grpo`)*
+
+* **Outputs Generated:**
+  - `results/rlvr_sample_efficiency_report.md`
+  - `results/rlvr_sample_efficiency_summary.json`
+
+### 4.3 Weights & Biases (W&B) Dashboard Inspection
+When `training.report_to=wandb` is enabled, monitor live telemetry under project `ask-the-database`:
+
+1. **`mean_reward` vs. `step` (Convergence Speed Curve)**:
+   - Tracks the progression of mean rollout reward. Harness-Zero initialized runs cross positive reward ($R > 0$) early (bypassing the zero-variance cold-start plateau).
+2. **`advantage_mean` vs. `step` (Gradient Learning Signal)**:
+   - Confirms non-zero, healthy GRPO gradient updates without advantage collapse.
+3. **`min_reward` & `max_reward` vs. `step` (Rollout Envelope)**:
+   - Highlights group diversity among the $G=4$ parallel rollouts per prompt.
+
+---
+
+## 5. Interactive Querying & Local Serving
+
+Launch the Streamlit web application to inspect database schemas, ask natural language questions, and trace multi-turn query execution in real time:
+
+```bash
+streamlit run app/streamlit_app.py
+```
+
+---
+
+## 6. Summary of Operational Makefile Commands
 
 | Command | Action | Output / Checkpoint |
 | :--- | :--- | :--- |
 | `make install` | Installs dependencies in editable mode | Virtualenv configured |
 | `make lint` | Runs Ruff linter and strict Mypy type-check | Zero warnings |
-| `make test` | Executes full Pytest unit test suite | 149/149 tests passing |
+| `make test` | Executes full Pytest unit test suite | 153/153 tests passing |
 | `make preprocess` | Downloads and tokenizes Spider datasets | `data/processed/train.jsonl` |
-| `make train-sft` | Trains Conventional SFT Baseline (Cond 2) | `models/mve/sft_baseline` |
-| `make train-filtered` | Trains Rejection Sampling SFT (Cond 3) | `models/mve/filtered_rollouts` |
-| `make train-harness-zero` | Trains Harness-Zero SFT (Cond 4) | `models/mve/harness_zero` |
-| `make train-grpo` | Runs multi-turn GRPO / RLVR (Cond 5) | `models/rlvr/final` |
+| `make train-sft` | Trains Conventional SFT Baseline | `models/sft/checkpoint-final` |
 | `make collect-distillation` | Collects K_SQL reviewed trajectories | `data/distillation/reviewed_trajectories.jsonl` |
+| `make train-harness-zero` | Trains SFT on Harness-Zero trajectories | `models/sft/harness_zero` |
+| `make train-grpo` | Runs multi-turn GRPO / RLVR training | `models/rlvr/final` |
 | `make evaluate` | Evaluates models on Spider test suites | `results/evaluation_summary.json` |
-| `make evaluate-mve` | Adjudicates Decision Gates (`GO`/`NO-GO`) | `docs/research/mve_harness_zero_results.md` |
 | `make compare-rlvr` | Compares RLVR sample efficiency & accuracy | `results/rlvr_sample_efficiency_report.md` |
+| `make evaluate-mve` | Adjudicates Decision Gates (`GO`/`NO-GO`) | `docs/research/harness-zero/mve_final_report.md` |

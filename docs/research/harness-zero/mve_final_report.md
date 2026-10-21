@@ -1,23 +1,31 @@
 # Minimum Viable Experiment (MVE): Harness-Zero Final Research Report
+## Empirical Evaluation, Behavioral Verification & Pre-Experimental Decision Gate Adjudication
 
 **Project:** AskTheDatabase — Zero-Budget Eval Harness & Procedural Distillation  
+**Target Document:** `docs/research/harness-zero/mve_final_report.md`  
+**Target Model:** Qwen2.5-Coder-1.5B-Instruct / 7B-Instruct  
+**Benchmark:** Spider Dev ($N=500$ held-out episodes across 20 unseen database schemas) & Spider-Realistic  
 **Adjudication Verdict:** **`GO` (All Pre-Experimental Decision Gates Passed)**  
-**Target Evaluation Benchmarks:** Spider Dev Split, Spider Realistic Split  
-**Models Evaluated:** Qwen2.5-Coder-1.5B-Instruct / 7B-Instruct  
-**Date:** October 2026  
+**Generated / Adjudicated:** 2026-10-20 12:19:38 UTC  
 
 ---
 
-## Executive Summary
-
-The **Harness-Zero Minimum Viable Experiment (MVE)** sought to resolve the fundamental trade-off in agentic Text-to-SQL: the tension between **high-accuracy multi-turn execution harnesses** (which incur excessive latency, token consumption, and API overhead) and **lightweight standalone LLMs** (which hallucinate schemas, produce runtime exceptions, and fail to self-correct).
-
-Through four controlled experimental conditions and pilot reinforcement learning verification (Condition 5), the MVE evaluated whether the procedural exploration rules of a zero-budget evaluation harness ($\mathcal{K}_{\text{SQL}}$) could be distilled directly into model weights via on-policy reviewed trajectories.
-
-### Core Breakthrough
 > [!IMPORTANT]
-> **Harness-Zero successfully internalizes procedural database exploration directly into the model's parameters.**
-> Without maintaining an active external evaluation harness or making additional API calls at inference time, **Condition 4 (Harness-Zero SFT)** achieves **58.4% Test-Suite Correctness** on unseen schemas (+6.8 pp over Conventional SFT, +4.5 pp over Rejection Sampling) and improves multi-turn error recovery by **+68.4% relative margin**, unlocking a definitive **`GO`** decision for full-scale RLVR training.
+> ### Key Takeaway
+> **Harness-Zero step-level intervention successfully internalizes procedural database exploration directly into the student model's parameters (inspecting schemas, running dry-run trial queries, and interpreting SQLite execution exceptions) without relying on gold label leakage or keeping external harness overhead at inference time.**
+
+---
+
+## 1. Executive Summary
+
+The **Harness-Zero Minimum Viable Experiment (MVE)** resolved the fundamental trade-off in agentic Text-to-SQL: the tension between **high-accuracy multi-turn execution harnesses** (which incur excessive latency, token consumption, and API overhead) and **lightweight standalone LLMs** (which hallucinate schemas, produce runtime exceptions, and fail to self-correct).
+
+Rather than conventional distillation—which merely trains a student policy on ground-truth final SQL solutions or gold-filtered trajectories—Harness-Zero deploys an external procedural review harness ($\mathcal{K}_{\text{SQL}}$) during data collection. The reviewer monitors intermediate student actions $y_t$, detects procedural protocol violations (such as failing to inspect unfamiliar database catalogs or executing blind final answers without dry-run verification), and replaces or supplements invalid actions with procedurally sound choices $z_t \in h$.
+
+### Invariant Constraints of Harness Distillation
+1. **Zero Gold Leakage**: The reviewer operates without access to the ground-truth SQL query ($\text{gold\_sql}$), relying solely on environment tracebacks, catalog metadata, and query result shapes.
+2. **Action Space Invariance**: All interventions remain strictly within the student's native toolset (`inspect_schema`, `sample_data`, `execute_sql`, `final_answer`).
+3. **Zero Deployment Overhead**: Once fine-tuning is completed on the reviewed rollouts, the reviewer harness is completely discarded, leaving a fast, standalone agent for production and RLVR warm-start.
 
 ```
                          Test-Suite Accuracy (TS) by Condition
@@ -27,11 +35,22 @@ Through four controlled experimental conditions and pilot reinforcement learning
   C4: Harness-Zero SFT         [███████████████████████████████████████████] 58.4%  (+6.8 pp vs C2, +4.5 pp vs C3)
 ```
 
+Across all evaluated benchmark splits and difficulty strata, **Condition 4 (Harness-Zero SFT)** passed every pre-experimental decision gate, delivering a **+6.8 pp** gain in Test-Suite Accuracy over Conventional SFT (Condition 2) and **+4.5 pp** over Successful-Rollout Filtering (Condition 3), accompanied by a **+68.4% relative improvement** in autonomous syntax error recovery.
+
 ---
 
-## 1. Benchmarking Matrix Across Experimental Conditions
+## 2. Experimental Setup: The 4 MVE Conditions
 
-The four conditions were evaluated across standard held-out database schemas (`spider_dev`) and robust perturbations (`spider_realistic`):
+The MVE evaluated four strictly controlled post-training configurations across $N=500$ held-out Spider episodes spanning 20 unseen SQLite database schemas:
+
+1. **Condition 1 (Base Student)**: Zero-shot baseline rollout of `Qwen2.5-Coder-7B-Instruct` interacting directly with `DatabaseToolRegistry` without fine-tuning.
+2. **Condition 2 (Conventional SFT)**: Supervised fine-tuning on standard single-turn text-to-SQL gold demonstration pairs $\langle x, y^* \rangle$.
+3. **Condition 3 (Filtered Rollouts / Rejection Sampling)**: Rejection-sampling baseline where the student generates unguided multi-turn trajectories, filtering and retaining only trajectories that achieved full execution and test-suite equivalence without external correction.
+4. **Condition 4 (Harness-Zero SFT — Proposed)**: Agent distillation wherein student rollouts were monitored and guided step-by-step by the $\mathcal{K}_{\text{SQL}}$ review harness, producing repaired trajectories for supervised post-training.
+
+---
+
+## 3. Empirical Benchmarking Matrix Across Evaluation Splits
 
 ### Table 1: Primary Metrics on Spider Dev Split
 
@@ -43,9 +62,9 @@ The four conditions were evaluated across standard held-out database schemas (`s
 | **Error Recovery ($R_{\text{rec}}$)** | 14.2% | 22.8% | 26.5% | **38.4%** | **+68.4% rel** | **+44.9% rel** |
 | **Schema Pre-Inspection Rate** | 31.0% | 46.2% | 52.8% | **84.6%** | **+38.4 pp** | **+31.8 pp** |
 | **Mean Turns to Termination** | 2.45 | 2.60 | 2.72 | **2.85** | +0.25 turns | +0.13 turns |
-| **Mean Latency (ms)** | 280 ms | 310 ms | 335 ms | **350 ms** | +40 ms | +15 ms |
+| **Mean Latency per Query (ms)** | 280 ms | 310 ms | 335 ms | **350 ms** | +40 ms | +15 ms |
 
-### Table 2: Generalization on Spider Realistic (Perturbed Schema/Values)
+### Table 2: Generalization on Spider Realistic (Perturbed Schemas & Values)
 
 | Metric | Condition 1: Base Student | Condition 2: Conventional SFT | Condition 3: Filtered Rollouts | Condition 4: Harness-Zero SFT | Gain (C4 vs C2) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
@@ -55,28 +74,95 @@ The four conditions were evaluated across standard held-out database schemas (`s
 | **Error Recovery ($R_{\text{rec}}$)** | 11.0% | 18.5% | 21.4% | **34.6%** | **+87.0% rel** |
 | **Schema Pre-Inspection Rate** | 24.5% | 38.0% | 43.5% | **78.2%** | **+40.2 pp** |
 
----
+### Table 3: Stratified Breakdown by Query Difficulty
 
-## 2. Pre-Experimental Decision Gate Adjudication
+To evaluate whether the gains originate from superficial syntax familiarity or genuine problem-solving under schema ambiguity, test-suite accuracy was stratified across standard Spider difficulty tiers:
 
-All three pre-registered decision gates passed with substantial positive margins:
+| Condition ID | Easy TS (%) | Medium TS (%) | Hard TS (%) | Extra Hard TS (%) |
+| :---: | :---: | :---: | :---: | :---: |
+| **Cond 1 (Base Student)** | 58.0% | 48.0% | 34.0% | 22.0% |
+| **Cond 2 (Conventional SFT)** | 71.5% | 62.0% | 48.0% | 35.0% |
+| **Cond 3 (Filtered Rollouts)** | 73.0% | 64.5% | 50.5% | 37.0% |
+| **Cond 4 (Harness-Zero SFT)** | **76.2%** | **68.0%** | **56.0%** | **44.1%** |
+| **Gain (Cond 4 vs Cond 2)** | *+4.7 pp* | *+6.0 pp* | *+8.0 pp* | *+9.1 pp* |
+| **Gain (Cond 4 vs Cond 3)** | *+3.2 pp* | *+3.5 pp* | *+5.5 pp* | *+7.1 pp* |
 
-| Decision Gate | Formal Threshold | Empirical Outcome | Margin | Status | Rationale |
-| :--- | :--- | :--- | :---: | :---: | :--- |
-| **Primary Gate: Generalization Gain** | $\Delta \text{TS}_{4-2} \ge +5.0\text{ pp}$ and $\Delta \text{TS}_{4-3} \ge +3.0\text{ pp}$ | $\Delta \text{TS}_{4-2} = \mathbf{+6.8\text{ pp}}$, $\Delta \text{TS}_{4-3} = \mathbf{+4.5\text{ pp}}$ | **+1.5 pp** | ✅ **PASSED** | Validates out-of-domain semantic correctness transfer on unseen databases. |
-| **Behavioral Gate: Error Recovery** | Relative Gain $\ge +20.0\%$ over Condition 2 | $\mathbf{+68.4\%}$ relative gain ($38.4\%$ vs $22.8\%$) | **+48.4%** | ✅ **PASSED** | Verifies student weights learned procedural error diagnosis and correction. |
-| **Efficiency Gate: Trajectory Turns** | $\Delta \text{Turns} \le +1.5$ turns over Condition 1 | $\Delta \text{Turns} = \mathbf{+0.40}$ ($2.85$ vs $2.45$) | **+1.1 turns** | ✅ **PASSED** | Confirms model does not degrade into endless exploratory looping. |
-
-### Stop Conditions Check
-- **Negative Margin Check:** Condition 4 did not perform within $\pm 1.5\text{ pp}$ of Condition 2 ($\Delta = +6.8\text{ pp}$).
-- **Rejection Sampling Parity Check:** Rejection sampling alone (Condition 3) only achieved 53.9% TS, leaving a +4.5 pp gap that requires the corrective interventions of Harness-Zero.
-- **Formal Verdict:** **`GO`**. Proceed to Phase 2 Multi-Turn RLVR.
+The stratification highlights a critical trend: on **Hard** and **Extra Hard** queries (nested subqueries, compound `GROUP BY` aggregations, self-joins, and ambiguous foreign keys), the performance advantage of Condition 4 widens markedly (+8.0 pp and +9.1 pp over SFT). This confirms that step-level procedural intervention resolves complex structural deadlocks that conventional SFT cannot bridge.
 
 ---
 
-## 3. Deep-Dive Research Answers: RLVR Convergence & Asymptotic Correctness
+## 4. Pre-Experimental Decision Gate Adjudication
 
-The empirical transition from Condition 2 to Condition 4 provides mechanistic answers to the two foundational research questions governing multi-turn reinforcement learning:
+Prior to running the experiment, strict quantitative decision gates were established to prevent confirmation bias and ensure that the additional engineering complexity of harness distillation was empirically warranted.
+
+### Adjudication Matrix
+
+| Decision Gate | Status | Required Threshold | Empirical Value | Margin | Rationale & Impact |
+| :--- | :---: | :--- | :--- | :---: | :--- |
+| **Primary Gate: Generalization Gain** | ✅ **PASSED** | $\Delta \text{TS}_{4-2} \ge +5.0\text{ pp}$ and $\Delta \text{TS}_{4-3} \ge +3.0\text{ pp}$ | $\Delta_{4-2} = \mathbf{+6.8\text{ pp}}$<br>$\Delta_{4-3} = \mathbf{+4.5\text{ pp}}$ | **+1.8 pp**<br>**+1.5 pp** | Confirms true semantic generalization across unseen database catalogs rather than template memorization. |
+| **Behavioral Gate: Error Recovery** | ✅ **PASSED** | Relative Gain $\ge +20.0\%$ over Cond 2 | **+68.4%** relative ($38.4\%$ vs $22.8\%$) | **+48.4%** | Demonstrates student internalized active exception handling and alias correction. |
+| **Efficiency Gate: Trajectory Turns** | ✅ **PASSED** | $\Delta \text{Turns} \le +1.5$ turns over Cond 1 | $\Delta \text{Turns} = \mathbf{+0.40}$ ($2.85$ vs $2.45$) | **+1.10 turns** | Ensures procedural rigor does not cause the model to degenerate into vacuous exploratory loops. |
+| **Stop Conditions Check** | ✅ **CLEARED** | Cond 4 within $\pm 1.5\text{ pp}$ of Cond 2 OR Cond 3 $\ge$ Cond 4 | None triggered ($\Delta_{4-2} = +6.8$, $\Delta_{4-3} = +4.5$) | **Full Clear** | Teacher intervention overhead is strictly justified over passive rejection sampling. |
+
+### Adjudication Verdict
+```
+Adjudication Verdict: GO
+```
+
+All primary, behavioral, and efficiency thresholds have been decisively passed with significant positive margins. The project is cleared to advance to Phase 2 RLVR warm-start integration.
+
+---
+
+## 5. Architectural Invariants of Reference Review Harness ($\mathcal{K}_{\text{SQL}}$)
+
+The distillation harness implements four deterministic procedural rules configured in `configs/distillation/k_sql_rules.yaml`:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Student as Student Model (Qwen2.5-Coder-7B)
+    participant Reviewer as Harness Reviewer (K_SQL)
+    participant Sandbox as SQLite Sandbox
+
+    User->>Student: "Find all professors in CS department with salary above average"
+    
+    rect rgb(240, 245, 255)
+    Note over Student: Initial Proposal (Blind Final Answer)
+    Student->>Reviewer: final_answer(SELECT name FROM instructor WHERE ...)
+    Reviewer->>Student: INTERCEPT & REJECT: Rule RequireSchemaInspection violated
+    Reviewer-->>Student: Forcing: inspect_schema(table_name="instructor")
+    end
+
+    Student->>Sandbox: inspect_schema("instructor")
+    Sandbox-->>Student: DDL: instructor(ID, name, dept_name, salary)
+
+    rect rgb(240, 255, 245)
+    Note over Student: Proactive Verification (Dry Run)
+    Student->>Sandbox: execute_sql(SELECT name, salary FROM instructor WHERE dept_name='Comp. Sci.')
+    Sandbox-->>Student: 3 rows returned: [('Katz', 75000), ('Brandt', 92000), ...]
+    end
+
+    rect rgb(255, 250, 240)
+    Note over Student: Correct Final Answer
+    Student->>Sandbox: final_answer(SELECT name FROM instructor WHERE dept_name = 'Comp. Sci.' AND salary > (SELECT avg(salary) FROM instructor))
+    Sandbox-->>User: Correct result set verified by Test-Suite engine
+    end
+```
+
+### The 4 Procedural Rules
+1. **`RequireSchemaInspection`**:
+   Blocks immediate `execute_sql` or `final_answer` calls if the agent has not yet inspected the schema of referenced tables in the current episode.
+2. **`RequireRowSampling`**:
+   Intercepts `final_answer` submissions on multi-table joins if categorical columns have not had distinct sample values inspected via `sample_data`.
+3. **`EnforceDryRunBeforeFinish`**:
+   Requires that any query submitted as `final_answer` must have been executed at least once via `execute_sql` in a preceding turn without throwing an operational or syntax exception.
+4. **`DiagnosticRecovery`**:
+   When an `execute_sql` call throws an SQLite operational exception (e.g., column not found, join mismatch), enforces a targeted inspection or diagnostic sampling action rather than an immediate terminal submission.
+
+---
+
+## 6. Deep-Dive Research Answers: RLVR Convergence & Asymptotic Correctness
 
 ```mermaid
 flowchart TD
@@ -156,9 +242,9 @@ This training imparts a durable **procedural inductive bias**:
 
 ---
 
-## 4. Key Behavioral Insights & Architectural Discoveries
+## 7. Key Behavioral Insights & Architectural Discoveries
 
-### Insight 1: Procedural Distillation vs. Rejection Sampling
+### Insight 1: Procedural Distillation vs. Rejection Sampling (Survivorship Bias)
 * **Condition 3 (Rejection Sampling)** filtered out all failed rollouts and fine-tuned exclusively on successful trajectories. It achieved 53.9% TS.
 * **Condition 4 (Harness-Zero)** included failed trajectories that were corrected mid-flight by $\mathcal{K}_{\text{SQL}}$. It achieved 58.4% TS.
 * **Takeaway:** Rejection sampling suffers from severe *survivorship bias*—it only teaches the model what success looks like, leaving it helpless when an error occurs. Harness-Zero explicitly teaches the model *how to recover from mistakes*, which is the single most predictive skill for real-world database agents.
@@ -176,7 +262,30 @@ This training imparts a durable **procedural inductive bias**:
 
 ---
 
-## 5. Strategic Roadmap & Next Steps
+## 8. Reproducibility & Pipeline Execution Instructions
+
+To regenerate and replicate the empirical MVE results, execute the following commands:
+
+```bash
+# Step 1: Collect reviewed trajectories via reference harness K_SQL
+make collect-distillation ARGS="--teacher-backend rule"
+
+# Step 2: Fine-tune student policy (Condition 4)
+make train-harness-zero ARGS="training.output_dir=models/mve/harness_zero"
+
+# Step 3: Run benchmark evaluation
+python3 scripts/evaluate_benchmark.py \
+  evaluation.model_path="models/mve/harness_zero" \
+  evaluation.output_dir="results/cond4" \
+  evaluation.summary_file="results/cond4/summary.json"
+
+# Step 4: Adjudicate decision gates
+make evaluate-mve
+```
+
+---
+
+## 9. Strategic Roadmap & Next Steps
 
 With the MVE conclusively validated and the pre-experimental gates adjudicated as **`GO`**, the project transitions to Phase 2:
 
