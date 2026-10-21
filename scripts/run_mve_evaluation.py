@@ -21,11 +21,13 @@ import sys
 from pathlib import Path
 
 from ask_the_database.distillation.mve_evaluator import (
-    ConditionMetrics, MVEReport, adjudicate_decision_gates, load_mve_config)
-
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    ConditionMetrics,
+    MVEReport,
+    adjudicate_decision_gates,
+    load_mve_config,
 )
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -152,9 +154,7 @@ def run_mve_adjudication(
     cfg = load_mve_config(config_path)
 
     metrics = get_empirical_mve_metrics()
-    logger.info(
-        "Evaluating %d condition metric records across benchmark splits.", len(metrics)
-    )
+    logger.info("Evaluating %d condition metric records across benchmark splits.", len(metrics))
 
     # Adjudicate pre-experimental decision gates
     report = adjudicate_decision_gates(metrics, cfg)

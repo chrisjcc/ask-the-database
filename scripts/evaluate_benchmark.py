@@ -10,17 +10,13 @@ from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
 from ask_the_database.environment.sqlite_env import SQLiteEnvironment
-from ask_the_database.environment.test_suite_evaluator import \
-    TestSuiteEvaluator
+from ask_the_database.environment.test_suite_evaluator import TestSuiteEvaluator
 from ask_the_database.inference.candidate_sampler import CandidateSampler
 from ask_the_database.inference.pipeline import NL2SQLPipeline
 from ask_the_database.inference.verifier_selector import VerifierSelector
-from ask_the_database.rewards.execution_reward import \
-    ExecutionEquivalenceEvaluator
+from ask_the_database.rewards.execution_reward import ExecutionEquivalenceEvaluator
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -164,15 +160,9 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
 
         leaderboard[bench] = {
             "total_samples": total,
-            "test_suite_accuracy_ts": (
-                round(ts_passed / total * 100, 2) if total else 0.0
-            ),
-            "execution_accuracy_ex": (
-                round(ex_passed / total * 100, 2) if total else 0.0
-            ),
-            "valid_execution_rate_va": (
-                round(valid_count / total * 100, 2) if total else 0.0
-            ),
+            "test_suite_accuracy_ts": (round(ts_passed / total * 100, 2) if total else 0.0),
+            "execution_accuracy_ex": (round(ex_passed / total * 100, 2) if total else 0.0),
+            "valid_execution_rate_va": (round(valid_count / total * 100, 2) if total else 0.0),
             "recovery_rate_mrr": (
                 round(recoveries / max(1, total - ex_passed) * 100, 2) if total else 0.0
             ),
@@ -189,9 +179,7 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def main(cfg: DictConfig) -> None:
     """Hydra CLI main entrypoint."""
-    logger.info(
-        "Starting NL2SQL Evaluation Harness with config:\n%s", OmegaConf.to_yaml(cfg)
-    )
+    logger.info("Starting NL2SQL Evaluation Harness with config:\n%s", OmegaConf.to_yaml(cfg))
     run_benchmark_evaluation(cfg)
 
 

@@ -6,9 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -63,12 +61,8 @@ def compare_runs(
     """Compare convergence speed and asymptotic evaluation scores across two RLVR runs."""
     if dry_run:
         # Synthetic representative trajectories for dry-run validation
-        rewards_a = [
-            -0.60 + 0.003 * i for i in range(200)
-        ]  # Starts low, slowly climbs to ~0.0
-        rewards_b = [
-            -0.20 + 0.004 * i for i in range(200)
-        ]  # Starts grounded, climbs to ~0.60
+        rewards_a = [-0.60 + 0.003 * i for i in range(200)]  # Starts low, slowly climbs to ~0.0
+        rewards_b = [-0.20 + 0.004 * i for i in range(200)]  # Starts grounded, climbs to ~0.60
         eval_a: dict[str, Any] = {
             "spider": {
                 "test_suite_accuracy_ts": 53.5,
@@ -90,16 +84,12 @@ def compare_runs(
         rewards_a = []
         if state_a_file.is_file():
             data_a = json.loads(state_a_file.read_text(encoding="utf-8"))
-            rewards_a = data_a.get(
-                "reward_history", [data_a.get("final_mean_reward", 0.0)]
-            )
+            rewards_a = data_a.get("reward_history", [data_a.get("final_mean_reward", 0.0)])
 
         rewards_b = []
         if state_b_file.is_file():
             data_b = json.loads(state_b_file.read_text(encoding="utf-8"))
-            rewards_b = data_b.get(
-                "reward_history", [data_b.get("final_mean_reward", 0.0)]
-            )
+            rewards_b = data_b.get("reward_history", [data_b.get("final_mean_reward", 0.0)])
 
         eval_a = {}
         if eval_a_path and eval_a_path.is_file():

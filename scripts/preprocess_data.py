@@ -9,9 +9,7 @@ from omegaconf import DictConfig
 from ask_the_database.data.downloader import DatasetDownloader
 from ask_the_database.data.preprocessor import DataPreprocessor
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -28,9 +26,7 @@ def main(cfg: DictConfig) -> None:
     processed_dir.mkdir(parents=True, exist_ok=True)
     raw_dir.mkdir(parents=True, exist_ok=True)
 
-    downloader = DatasetDownloader(
-        raw_dir=str(raw_dir), databases_dir=str(databases_dir)
-    )
+    downloader = DatasetDownloader(raw_dir=str(raw_dir), databases_dir=str(databases_dir))
 
     # 1. Download and extract SQLite databases if needed
     hf_db_repo = getattr(cfg.data, "hf_database_repo", "HAL-9001/spider-databases")
@@ -67,9 +63,7 @@ def main(cfg: DictConfig) -> None:
     val_split_name = getattr(cfg.data, "validation_split", "validation")
     if val_split_name in dataset:
         val_out = processed_dir / "val.jsonl"
-        logger.info(
-            "Preprocessing validation split (%s) -> %s", val_split_name, val_out
-        )
+        logger.info("Preprocessing validation split (%s) -> %s", val_split_name, val_out)
         val_count = preprocessor.process_split(
             records=dataset[val_split_name],
             source=dataset_name,
