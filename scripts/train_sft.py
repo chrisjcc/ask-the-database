@@ -9,7 +9,9 @@ from omegaconf import DictConfig, OmegaConf
 from ask_the_database.training.dataset import load_sft_dataset
 from ask_the_database.training.sft_trainer import SFTWarmupPipeline
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -34,7 +36,11 @@ def main(cfg: DictConfig) -> None:
             else Path(cfg.paths.processed_dir) / "train.jsonl"
         )
         custom_val = getattr(cfg.training, "val_dataset_path", None)
-        val_path = Path(custom_val) if custom_val else Path(cfg.paths.processed_dir) / "val.jsonl"
+        val_path = (
+            Path(custom_val)
+            if custom_val
+            else Path(cfg.paths.processed_dir) / "val.jsonl"
+        )
 
         train_ds = load_sft_dataset(str(train_path), max_samples=5)
         logger.info("Loaded dry-run training samples: %d", len(train_ds))
@@ -56,14 +62,18 @@ def main(cfg: DictConfig) -> None:
         # Ensure output directory exists for DVC / workflow tracking
         out_dir = Path(training_args.output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "adapter_config.json").write_text('{"peft_type": "LORA", "dry_run": true}\n')
+        (out_dir / "adapter_config.json").write_text(
+            '{"peft_type": "LORA", "dry_run": true}\n'
+        )
         (out_dir / "adapter_model.safetensors").touch()
         logger.info("Dry-run completed successfully.")
         return
 
     # Full training execution
     output_dir = pipeline.train()
-    logger.info("SFT Warmup completed successfully. Checkpoint saved to: %s", output_dir)
+    logger.info(
+        "SFT Warmup completed successfully. Checkpoint saved to: %s", output_dir
+    )
 
 
 if __name__ == "__main__":

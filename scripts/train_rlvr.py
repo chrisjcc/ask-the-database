@@ -10,10 +10,14 @@ from omegaconf import DictConfig, OmegaConf
 
 from ask_the_database.inference.pipeline import NL2SQLPipeline
 from ask_the_database.rewards.multi_turn_reward import MultiTurnRewardEvaluator
-from ask_the_database.training.adapters.skyrl_adapter import SkyRLSQLEnvironment
-from ask_the_database.training.adapters.trl_grpo import compute_group_normalized_rewards
+from ask_the_database.training.adapters.skyrl_adapter import \
+    SkyRLSQLEnvironment
+from ask_the_database.training.adapters.trl_grpo import \
+    compute_group_normalized_rewards
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -25,7 +29,9 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
     reward_evaluator = MultiTurnRewardEvaluator(config=reward_cfg)
     env = SkyRLSQLEnvironment(config=training_cfg, reward_evaluator=reward_evaluator)
 
-    dry_run = bool(getattr(cfg, "dry_run", False) or getattr(training_cfg, "dry_run", False))
+    dry_run = bool(
+        getattr(cfg, "dry_run", False) or getattr(training_cfg, "dry_run", False)
+    )
     num_rollouts = int(getattr(training_cfg, "num_rollouts_per_prompt", 8))
     max_steps = int(getattr(training_cfg, "max_steps", 250))
     if max_steps <= 0:
@@ -79,7 +85,9 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                 for _ in range(num_rollouts):
                     env.reset(instance)
                     # Turn 1: inspect schema
-                    _, r1, done1, _ = env.step('<tool name="inspect_schema">["test_table"]</tool>')
+                    _, r1, done1, _ = env.step(
+                        '<tool name="inspect_schema">["test_table"]</tool>'
+                    )
                     assert not done1
 
                     # Turn 2: final answer
@@ -117,7 +125,9 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                         "dry_run": True,
                         "episodes": telemetry["episodes_completed"],
                         "final_mean_reward": (
-                            telemetry["mean_rewards"][-1] if telemetry["mean_rewards"] else 0.0
+                            telemetry["mean_rewards"][-1]
+                            if telemetry["mean_rewards"]
+                            else 0.0
                         ),
                     },
                     f,
@@ -139,7 +149,9 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
         "Executing Full Multi-Turn RLVR Agent training loop for output_dir=%s",
         output_dir,
     )
-    processed_dir = Path(getattr(getattr(cfg, "paths", {}), "processed_dir", "data/processed"))
+    processed_dir = Path(
+        getattr(getattr(cfg, "paths", {}), "processed_dir", "data/processed")
+    )
     train_path = processed_dir / "train.jsonl"
 
     instances: list[dict[str, Any]] = []
@@ -168,7 +180,9 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
     # Initialize agent policy pipeline
     model_path = getattr(training_cfg, "model_path", None)
     if not model_path or not Path(str(model_path)).exists():
-        model_name = getattr(getattr(cfg, "model", {}), "name", "Qwen/Qwen2.5-Coder-1.5B-Instruct")
+        model_name = getattr(
+            getattr(cfg, "model", {}), "name", "Qwen/Qwen2.5-Coder-1.5B-Instruct"
+        )
         model_path = model_name
 
     logger.info("Initializing Agent Policy with model_path=%s", model_path)
@@ -209,7 +223,9 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
             done = False
             r = 0.0
             while not done:
-                tables = env.registry.schema_manager.get_tables() if env.registry else None
+                tables = (
+                    env.registry.schema_manager.get_tables() if env.registry else None
+                )
                 sampling_temp = float(getattr(training_cfg, "temperature", 0.7))
                 action = pipeline.generate_step(
                     messages=env.history,
@@ -221,8 +237,12 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                 _, r, done, _ = env.step(action)
             rollout_rewards.append(r)
 
-        advantages = compute_group_normalized_rewards(rollout_rewards, group_size=num_rollouts)
-        mean_reward = sum(rollout_rewards) / len(rollout_rewards) if rollout_rewards else 0.0
+        advantages = compute_group_normalized_rewards(
+            rollout_rewards, group_size=num_rollouts
+        )
+        mean_reward = (
+            sum(rollout_rewards) / len(rollout_rewards) if rollout_rewards else 0.0
+        )
 
         telemetry["episodes_completed"] += 1
         telemetry["mean_rewards"].append(mean_reward)
@@ -235,7 +255,9 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                     "mean_reward": mean_reward,
                     "min_reward": min(rollout_rewards) if rollout_rewards else 0.0,
                     "max_reward": max(rollout_rewards) if rollout_rewards else 0.0,
-                    "advantage_mean": (sum(advantages) / len(advantages) if advantages else 0.0),
+                    "advantage_mean": (
+                        sum(advantages) / len(advantages) if advantages else 0.0
+                    ),
                 },
                 step=step + 1,
             )

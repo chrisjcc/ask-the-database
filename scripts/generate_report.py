@@ -5,7 +5,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -46,14 +48,18 @@ def log_trajectories_to_weave(
         import weave  # type: ignore[import-untyped]
 
         weave.init(project_name)
-        logger.info("Successfully connected to W&B Weave for project '%s'.", project_name)
+        logger.info(
+            "Successfully connected to W&B Weave for project '%s'.", project_name
+        )
         # Log dataset of evaluation traces
         dataset = weave.Dataset(rows=trajectories)
         weave.publish(dataset, name="evaluation_trajectories")
         logger.info("Published %d trajectories to Weave.", len(trajectories))
         return True
     except Exception as e:
-        logger.info("Weave trajectory logging skipped (offline or not configured): %s", e)
+        logger.info(
+            "Weave trajectory logging skipped (offline or not configured): %s", e
+        )
         return False
 
 
@@ -161,7 +167,9 @@ def generate_reports(
         with open(summary_file, encoding="utf-8") as f:
             data = json.load(f)
     else:
-        logger.warning("Summary file %s not found. Using baseline comparison data.", summary_file)
+        logger.warning(
+            "Summary file %s not found. Using baseline comparison data.", summary_file
+        )
 
     content = generate_ablation_markdown(data)
 

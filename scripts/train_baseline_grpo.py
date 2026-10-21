@@ -10,7 +10,9 @@ from ask_the_database.rewards.rubric import SQLRewardRubric
 from ask_the_database.training.adapters.base import RolloutBatch
 from ask_the_database.training.adapters.trl_grpo import TRLGRPOAdapter
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -27,7 +29,9 @@ def main(cfg: DictConfig) -> None:
 
     dry_run = bool(getattr(cfg, "dry_run", False))
     if dry_run:
-        logger.info("Dry-run mode active. Validating reward functions and adapter configuration...")
+        logger.info(
+            "Dry-run mode active. Validating reward functions and adapter configuration..."
+        )
         training_args = adapter.build_training_args()
         logger.info(
             "Validated GRPOConfig: output_dir=%s, num_generations=%d, beta=%f",

@@ -19,19 +19,21 @@ from typing import Any
 from omegaconf import OmegaConf
 
 from ask_the_database.distillation.collector import (
-    MockStudentPolicy,
-    ReviewedTrajectoryCollector,
-    StudentPolicy,
-    sample_stratified_spider_tasks,
-)
+    MockStudentPolicy, ReviewedTrajectoryCollector, StudentPolicy,
+    sample_stratified_spider_tasks)
 from ask_the_database.distillation.harness_reviewer import HarnessReviewer
-from ask_the_database.training.adapters.skyrl_adapter import SkyRLSQLEnvironment
+from ask_the_database.training.adapters.skyrl_adapter import \
+    SkyRLSQLEnvironment
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
-def build_student_policy(backend: str, model_name: str, temperature: float = 0.0) -> StudentPolicy:
+def build_student_policy(
+    backend: str, model_name: str, temperature: float = 0.0
+) -> StudentPolicy:
     """Instantiate student policy based on requested backend."""
     if backend == "mock":
         return MockStudentPolicy()
@@ -98,7 +100,9 @@ def build_teacher_callable(backend: str, model_name: str) -> Any | None:
 
             return litellm_teacher
         except Exception as e:
-            logger.warning("Failed to configure litellm teacher: %s. Using rule engine.", e)
+            logger.warning(
+                "Failed to configure litellm teacher: %s. Using rule engine.", e
+            )
             return None
     return None
 
@@ -118,10 +122,14 @@ def run_collection(args: argparse.Namespace) -> dict[str, Any]:
     if not raw_spider_path.exists():
         fallback_processed = Path("data/processed/train.jsonl")
         if fallback_processed.exists():
-            logger.info("Raw spider path not found. Falling back to %s", fallback_processed)
+            logger.info(
+                "Raw spider path not found. Falling back to %s", fallback_processed
+            )
             raw_spider_path = fallback_processed
         else:
-            raise FileNotFoundError(f"Spider training data not found at {raw_spider_path}")
+            raise FileNotFoundError(
+                f"Spider training data not found at {raw_spider_path}"
+            )
 
     # Dry-run override
     if args.dry_run:
@@ -223,13 +231,19 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         default="configs/distillation/k_sql_rules.yaml",
         help="Path to K_SQL procedural rules YAML config.",
     )
-    parser.add_argument("--n-medium", type=int, default=150, help="Target count for Medium tasks.")
-    parser.add_argument("--n-hard", type=int, default=200, help="Target count for Hard tasks.")
+    parser.add_argument(
+        "--n-medium", type=int, default=150, help="Target count for Medium tasks."
+    )
+    parser.add_argument(
+        "--n-hard", type=int, default=200, help="Target count for Hard tasks."
+    )
     parser.add_argument(
         "--n-extra", type=int, default=150, help="Target count for Extra Hard tasks."
     )
     parser.add_argument("--seed", type=int, default=42, help="Sampling random seed.")
-    parser.add_argument("--max-turns", type=int, default=5, help="Turn limit per rollout.")
+    parser.add_argument(
+        "--max-turns", type=int, default=5, help="Turn limit per rollout."
+    )
     parser.add_argument(
         "--student-backend",
         type=str,
