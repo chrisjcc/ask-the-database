@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-14 22:14:23 UTC",
+  "timestamp": "2026-10-20 12:19:38 UTC",
   "verdict": "GO",
   "summary": "The 4-condition Minimum Viable Experiment achieved an overall **GO** decision. Condition 4 (Harness-Zero SFT) achieved 58.4% Test-Suite Correctness on unseen schemas, delivering a +6.8 pp gain over Conventional SFT (Condition 2) and +4.5 pp over Filtered Rollouts (Condition 3). Error recovery rate improved by +68.4% relative margin, confirming that procedural exploration rules were successfully internalized into model parameters without incurring runtime harness overhead.",
   "conditions": [
