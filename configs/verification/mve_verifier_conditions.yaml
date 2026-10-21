@@ -1,0 +1,65 @@
+experiment:
+  name: "LLM-as-a-Verifier Minimum Viable Experiment (MVE)"
+  version: "1.0.0"
+  description: "3-way comparative evaluation between Baseline SFT, Harness-Zero, and LLM-as-a-Verifier"
+  primary_metric: "test_suite_correctness"
+
+benchmark:
+  splits:
+    - name: "spider_dev"
+      sample_size: 500
+      schemas_count: 20
+    - name: "spider_realistic"
+      sample_size: 508
+
+conditions:
+  - id: 1
+    name: "Baseline (Conventional SFT)"
+    checkpoint: "models/mve/sft_baseline"
+    inference_mode: "greedy_n1"
+    temperature: 0.0
+    num_candidates: 1
+    use_verifier: false
+
+  - id: 2
+    name: "Harness-Zero (Internalized)"
+    checkpoint: "models/sft/harness_zero"
+    inference_mode: "greedy_n1"
+    temperature: 0.0
+    num_candidates: 1
+    use_verifier: false
+
+  - id: 3
+    name: "LLM-as-a-Verifier (Standalone Best-of-5)"
+    checkpoint: "models/mve/sft_baseline"
+    inference_mode: "best_of_n"
+    temperature: 0.7
+    num_candidates: 5
+    use_verifier: true
+
+  - id: 4
+    name: "Harness-Zero + Verifier (Compound Best-of-5)"
+    checkpoint: "models/sft/harness_zero"
+    inference_mode: "best_of_n"
+    temperature: 0.7
+    num_candidates: 5
+    use_verifier: true
+
+decision_gates:
+  gate_1_absolute_gain:
+    threshold_pp: 5.0
+    description: "Config 3 Test-Suite Correctness gain over Config 1 >= +5.0 pp"
+  gate_2_harness_zero_dominance:
+    threshold_pp: 2.0
+    description: "Config 3 Test-Suite Correctness >= Config 2 + 2.0 pp"
+  gate_2b_compound_margin:
+    threshold_pp: 3.0
+    description: "Config 3b Test-Suite Correctness >= Config 2 + 3.0 pp"
+  gate_3_latency_budget:
+    max_median_latency_ms: 1200.0
+    veto_latency_ms: 1500.0
+    description: "Median query latency <= 1,200 ms (Veto if > 1,500 ms)"
+  gate_4_calibration_vs_majority_vote:
+    min_advantage_pp: 3.0
+    min_agreement_pct: 80.0
+    description: "Verifier selection accuracy >= Majority Voting + 3.0 pp and >= 80% agreement with ground truth"
