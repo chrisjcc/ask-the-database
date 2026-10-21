@@ -16,12 +16,12 @@ This operational guide provides end-to-end instructions for running the complete
    ┌──────────────────────────────────────────────────────────────────────────────────┐
    │ 2. Supervised Fine-Tuning & Distillation                                         │
    │    • 2.1 Conventional SFT Warmup (`make train-sft`)                              │
-   │    • 2.2 Harness-Zero Trajectory Distillation (`make collect-distillation` / SFT) │
+   │    • 2.2 Harness-Zero Trajectory Distillation (`make collect-distillation` / SFT)│
    └─────────────────────────────────────┬────────────────────────────────────────────┘
                                          │
                                          ▼
    ┌──────────────────────────────────────────────────────────────────────────────────┐
-   │ 3. Multi-Turn RLVR Agent Training (SkyRL / GRPO in `SkyRLSQLEnvironment`)       │
+   │ 3. Multi-Turn RLVR Agent Training (SkyRL / GRPO in `SkyRLSQLEnvironment`)        │
    │    • 3.1 Fast Dry-Run Smoke Test (`make train-grpo ARGS="dry_run=true"`)         │
    │    • 3.2 Single-Node Policy Training (`make train-grpo`)                         │
    │    • 3.3 Multi-GPU Cluster Sweeps (`sbatch scripts/slurm/launch_rlvr_sweep.sh`)  │
