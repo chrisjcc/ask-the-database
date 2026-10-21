@@ -24,10 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from ask_the_database.evaluation import (
-    HarnessSummary,
-    ZeroBudgetHarness,
-)
+from ask_the_database.evaluation import HarnessSummary, ZeroBudgetHarness
 
 
 def compute_spearman_rho(ranks_x: list[float], ranks_y: list[float]) -> float:

@@ -126,7 +126,13 @@ class TrapScorer:
         r"\bNOW\s*\(",
     )
 
-    AGGREGATE_FUNCS = (r"\bSUM\s*\(", r"\bAVG\s*\(", r"\bCOUNT\s*\(", r"\bMAX\s*\(", r"\bMIN\s*\(")
+    AGGREGATE_FUNCS = (
+        r"\bSUM\s*\(",
+        r"\bAVG\s*\(",
+        r"\bCOUNT\s*\(",
+        r"\bMAX\s*\(",
+        r"\bMIN\s*\(",
+    )
 
     def __init__(self, schema_columns: dict[str, set[str]] | None = None) -> None:
         self.schema_columns = schema_columns or {}
@@ -355,7 +361,7 @@ class ZeroBudgetHarness:
             return None
         if isinstance(cell, float):
             return round(cell, 4)
-        if isinstance(cell, (int, bool)):
+        if isinstance(cell, int | bool):
             return cell
         str_val = str(cell).strip()
         try:

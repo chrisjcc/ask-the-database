@@ -14,10 +14,7 @@ import json
 import sys
 from pathlib import Path
 
-from ask_the_database.evaluation import (
-    HarnessSummary,
-    ZeroBudgetHarness,
-)
+from ask_the_database.evaluation import HarnessSummary, ZeroBudgetHarness
 
 
 def format_table(headers: list[str], rows: list[list[str]]) -> str:
@@ -54,7 +51,14 @@ def print_summary_report(summary: HarnessSummary, title: str) -> None:
 
     # Per-Case Verdicts
     print("\n[ CASE EVALUATION BREAKDOWN ]")
-    headers = ["ID", "Expected Trap", "Status", "Attributed Trap", "Match?", "Latency (ms)"]
+    headers = [
+        "ID",
+        "Expected Trap",
+        "Status",
+        "Attributed Trap",
+        "Match?",
+        "Latency (ms)",
+    ]
     rows = []
     for v in summary.case_verdicts:
         match_str = "YES" if v.attribution_match else ("N/A" if v.passed else "NO")
