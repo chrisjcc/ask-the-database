@@ -14,7 +14,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-DEFAULT_FIXTURES_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data" / "fixtures"
+DEFAULT_FIXTURES_DIR = (
+    Path(__file__).resolve().parent.parent.parent.parent / "data" / "fixtures"
+)
 
 
 class TrapCategory(StrEnum):
@@ -95,7 +97,10 @@ class QueryPlanGuard:
             for row in rows:
                 detail = str(row[-1]) if row else ""
                 plan_rows.append(detail)
-                if "SCAN TABLE" in detail.upper() and "USING INDEX" not in detail.upper():
+                if (
+                    "SCAN TABLE" in detail.upper()
+                    and "USING INDEX" not in detail.upper()
+                ):
                     warnings.append(f"Unindexed table scan: {detail}")
                 if "CORRELATED SCALAR SUBQUERY" in detail.upper():
                     warnings.append(f"Correlated scalar subquery: {detail}")
@@ -162,7 +167,9 @@ class TrapScorer:
             return TrapCategory.HALLUCINATED_COLUMN.value
 
         # 3. Check Aggregation Without Grouping
-        has_agg = any(re.search(agg, candidate_sql, re.IGNORECASE) for agg in self.AGGREGATE_FUNCS)
+        has_agg = any(
+            re.search(agg, candidate_sql, re.IGNORECASE) for agg in self.AGGREGATE_FUNCS
+        )
         has_group_by = bool(re.search(r"\bGROUP\s+BY\b", candidate_sql, re.IGNORECASE))
         gold_has_group_by = bool(re.search(r"\bGROUP\s+BY\b", gold_sql, re.IGNORECASE))
 
@@ -194,7 +201,10 @@ class TrapScorer:
             return TrapCategory.NULL_BOUNDARY.value
         if "COALESCE" in gold_sql.upper() and "COALESCE" not in sql_upper:
             return TrapCategory.NULL_BOUNDARY.value
-        if re.search(r"!=\s*['\"][^'\"]+['\"]", candidate_sql) and "OR" not in sql_upper:
+        if (
+            re.search(r"!=\s*['\"][^'\"]+['\"]", candidate_sql)
+            and "OR" not in sql_upper
+        ):
             return TrapCategory.NULL_BOUNDARY.value
 
         # 5. Check Join Fanout Traps
@@ -203,7 +213,12 @@ class TrapScorer:
             return TrapCategory.JOIN_FANOUT.value
         if "JOIN LINE_ITEMS" in sql_upper and "JOIN LINE_ITEMS" not in gold_sql.upper():
             return TrapCategory.JOIN_FANOUT.value
-        if candidate_data and gold_data and len(candidate_data) == 1 and len(gold_data) == 1:
+        if (
+            candidate_data
+            and gold_data
+            and len(candidate_data) == 1
+            and len(gold_data) == 1
+        ):
             # Check numeric inflation
             try:
                 cand_val = float(candidate_data[0][0])
@@ -236,7 +251,9 @@ class DecisionTable:
             if count == 0:
                 continue
             ratio = count / total_failures
-            severity = "HIGH" if ratio >= 0.3 else ("MEDIUM" if ratio >= 0.15 else "LOW")
+            severity = (
+                "HIGH" if ratio >= 0.3 else ("MEDIUM" if ratio >= 0.15 else "LOW")
+            )
 
             if trap_name == TrapCategory.JOIN_FANOUT.value:
                 recommendations.append(
@@ -335,7 +352,9 @@ class ZeroBudgetHarness:
             with open(self.seed_sql_path, encoding="utf-8") as f:
                 conn.executescript(f.read())
             cur = conn.cursor()
-            tables = cur.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()
+            tables = cur.execute(
+                "SELECT name FROM sqlite_master WHERE type='table';"
+            ).fetchall()
             schema: dict[str, set[str]] = {}
             for (tbl,) in tables:
                 cols = cur.execute(f"PRAGMA table_info({tbl});").fetchall()
@@ -405,7 +424,9 @@ class ZeroBudgetHarness:
     def load_cases(self) -> list[dict[str, Any]]:
         """Load the 35 curated smoke cases from JSONL."""
         if not self.smoke_cases_path.exists():
-            raise FileNotFoundError(f"Smoke cases file not found: {self.smoke_cases_path}")
+            raise FileNotFoundError(
+                f"Smoke cases file not found: {self.smoke_cases_path}"
+            )
 
         cases: list[dict[str, Any]] = []
         with open(self.smoke_cases_path, encoding="utf-8") as f:
@@ -429,7 +450,9 @@ class ZeroBudgetHarness:
         conn_base = self._create_database(is_mutant=False)
         try:
             gold_ok_base, gold_base_data, _ = self._execute_query(conn_base, gold_sql)
-            gen_ok_base, gen_base_data, gen_base_err = self._execute_query(conn_base, candidate_sql)
+            gen_ok_base, gen_base_data, gen_base_err = self._execute_query(
+                conn_base, candidate_sql
+            )
         finally:
             conn_base.close()
 
@@ -441,7 +464,9 @@ class ZeroBudgetHarness:
         conn_mut = self._create_database(is_mutant=True)
         try:
             gold_ok_mut, gold_mut_data, _ = self._execute_query(conn_mut, gold_sql)
-            gen_ok_mut, gen_mut_data, gen_mut_err = self._execute_query(conn_mut, candidate_sql)
+            gen_ok_mut, gen_mut_data, gen_mut_err = self._execute_query(
+                conn_mut, candidate_sql
+            )
         finally:
             conn_mut.close()
 
@@ -498,7 +523,9 @@ class ZeroBudgetHarness:
             gold_sql=gold_sql,
         )
 
-    def evaluate_batch(self, cases_and_sql: list[tuple[dict[str, Any], str]]) -> HarnessSummary:
+    def evaluate_batch(
+        self, cases_and_sql: list[tuple[dict[str, Any], str]]
+    ) -> HarnessSummary:
         """Evaluate a batch of (case, candidate_sql) pairs."""
         t_start = time.perf_counter()
         verdicts: list[CaseVerdict] = []
@@ -538,9 +565,13 @@ class ZeroBudgetHarness:
         base_pass_rate = base_passed_count / total if total > 0 else 0.0
         mutant_pass_rate = mutant_passed_count / total if total > 0 else 0.0
 
-        attribution_accuracy = attributed_correct_count / failed_count if failed_count > 0 else 1.0
+        attribution_accuracy = (
+            attributed_correct_count / failed_count if failed_count > 0 else 1.0
+        )
 
-        recommendations = DecisionTable.generate_remediations(misses_by_trap, failed_count)
+        recommendations = DecisionTable.generate_remediations(
+            misses_by_trap, failed_count
+        )
 
         return HarnessSummary(
             total_cases=total,
