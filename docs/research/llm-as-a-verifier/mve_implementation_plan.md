@@ -2,6 +2,7 @@
 ## Experimental Specification, Comparative Configurations, and Decision Gate Governance for Relational Text-to-SQL
 
 **Feature Branch:** `feat/llm-as-a-verifier-mve`  
+**GitHub Epic:** [#67](https://github.com/chrisjcc/ask-the-database/issues/67)  
 **Target Document:** `docs/research/llm-as-a-verifier/mve_implementation_plan.md`  
 **Project:** [AskTheDatabase](https://github.com/chrisjcc/ask-the-database)  
 **Date:** October 2026  
@@ -242,26 +243,25 @@ To ensure repository integrity and maintain rigorous scientific hygiene:
 
 ---
 
-## 8. Step-by-Step Execution Plan
+## 8. Step-by-Step Execution Plan & Issue Mapping
 
-### Step 1: Implement the SQL Verifier Engine
+### Step 1: Implement the SQL Verifier Engine ([#68](https://github.com/chrisjcc/ask-the-database/issues/68))
 - Implement `src/ask_the_database/verification/sql_verifier.py`.
 - Define continuous logit-expectation extractor and pivot tournament selection logic.
 - Add unit tests in `tests/unit/test_sql_verifier.py`.
 
-### Step 2: Configure Verification Criteria
+### Step 2: Configure Verification Criteria & Pipeline Sampler ([#69](https://github.com/chrisjcc/ask-the-database/issues/69))
 - Create `configs/verification/sql_verifier_rules.yaml` with decomposed criteria (intent, joins, aggregations, result sanity).
+- Implement candidate sampler and SQLite sandbox pre-filter in `src/ask_the_database/inference/candidate_sampler.py`.
 
-### Step 3: Implement MVE Evaluation Orchestrator
+### Step 3: Implement MVE Evaluation Orchestrator & Benchmark Adjudication ([#70](https://github.com/chrisjcc/ask-the-database/issues/70))
 - Create `scripts/run_verifier_mve.py` executing Configurations 1, 2, 3, and 3b across Spider Dev.
 - Add `make evaluate-verifier-mve` to `Makefile`.
-
-### Step 4: Run Empirical Benchmarking & Adjudicate Decision Gates
 - Execute evaluation across $N=500$ Spider Dev episodes.
 - Measure Test-Suite Accuracy, Execution Accuracy, Latency, and Token Multiplier.
 - Adjudicate Decision Gates 1–4.
 - Publish `docs/research/llm-as-a-verifier/mve_results.md` and `results/verifier_mve_summary.json`.
 
-### Step 5: Final Adjudication & Merge Recommendation
+### Step 4: Final Adjudication & Merge Recommendation
 - If `GO`: Merge `feat/llm-as-a-verifier-mve` into `main` and integrate verifier into `app/streamlit_app.py`.
 - If `NO-GO`: Document findings in research archive; preserve Harness-Zero as the production Single Source of Truth.
