@@ -17,7 +17,7 @@ MYPY := $(if $(wildcard $(VENV)/bin/mypy),$(VENV)/bin/mypy,mypy)
 PYTEST := $(if $(wildcard $(VENV)/bin/pytest),$(VENV)/bin/pytest,pytest)
 DVC := $(if $(wildcard $(VENV)/bin/dvc),$(VENV)/bin/dvc,dvc)
 
-.PHONY: help install install-dev lint format test preprocess train-sft train-filtered train-grpo collect-distillation train-harness-zero evaluate evaluate-mve compare-rlvr
+.PHONY: help install install-dev lint format test preprocess train-sft train-filtered train-grpo collect-distillation train-harness-zero evaluate evaluate-mve compare-rlvr smoke-eval evaluate-zero-budget-mve
 
 help:
 	@echo "AskTheDatabase - Operational Commands:"
@@ -26,6 +26,8 @@ help:
 	@echo "  make lint                 Run ruff linter and mypy type checks"
 	@echo "  make format               Auto-format code via ruff"
 	@echo "  make test                 Execute pytest test suite"
+	@echo "  make smoke-eval           Execute fast in-process zero-budget smoke check (< 3.0s)"
+	@echo "  make evaluate-zero-budget-mve Adjudicate 3-way Zero-Budget MVE decision gates"
 	@echo "  make preprocess           Download datasets and run normalization pipeline"
 	@echo "  make train-sft            Execute SFT warmup training on base model (Condition 2)"
 	@echo "  make train-filtered       Train SFT on filtered successful rollouts (Condition 3)"
@@ -82,3 +84,9 @@ evaluate-mve:
 
 compare-rlvr:
 	$(PYTHON) scripts/compare_rlvr_efficiency.py $(ARGS)
+
+smoke-eval:
+	$(PYTHON) scripts/run_smoke_eval.py $(ARGS)
+
+evaluate-zero-budget-mve:
+	$(PYTHON) scripts/run_zero_budget_mve.py $(ARGS)
