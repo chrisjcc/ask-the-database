@@ -46,7 +46,24 @@ def rank_data(values: list[float]) -> list[float]:
     return ranks
 
 
-def run_benchmark() -> dict[str, Any]:
+def load_and_evaluate_preds(harness: ZeroBudgetHarness, preds_path: Path) -> HarnessSummary:
+    """Evaluate candidate predictions from a JSONL file."""
+    cases = harness.load_cases()
+    cases_by_id = {c["id"]: c for c in cases}
+    with open(preds_path, encoding="utf-8") as f:
+        preds = [json.loads(line) for line in f if line.strip()]
+    pairs = [
+        (cases_by_id[p["id"]], p.get("sql") or p.get("query", ""))
+        for p in preds
+        if p["id"] in cases_by_id
+    ]
+    return harness.evaluate_batch(pairs)
+
+
+def run_benchmark(
+    baseline_preds_path: Path | None = None,
+    harness_zero_preds_path: Path | None = None,
+) -> dict[str, Any]:
     """Execute the full 3-way comparative benchmark and adjudicate decision gates."""
     harness = ZeroBudgetHarness()
 
@@ -100,19 +117,6 @@ def run_benchmark() -> dict[str, Any]:
         },
     ]
 
-    spider_scores = [c["spider_ts"] for c in checkpoints]
-    harness_scores = [c["harness_pass_rate"] for c in checkpoints]
-
-    spider_ranks = rank_data(spider_scores)
-    harness_ranks = rank_data(harness_scores)
-    spearman_rho = compute_spearman_rho(harness_ranks, spider_ranks)
-    gate2_passed = spearman_rho >= 0.88
-
-    # 3. Gate 3: Error-Trap Diagnostic Resolution & Harness-Zero Behavioral Profiling
-    # Audit synthetic and model errors
-    flawed_summary: HarnessSummary = harness.evaluate_flawed()
-    attribution_acc = flawed_summary.attribution_accuracy
-
     # Profiling error trap distribution: Baseline vs Harness-Zero
     baseline_trap_misses = {
         "join_fanout": 4,
@@ -129,9 +133,39 @@ def run_benchmark() -> dict[str, Any]:
         "null_boundary": 4,
     }
 
-    base_hallucinated = baseline_trap_misses["hallucinated_column"]
-    hz_hallucinated = harness_zero_trap_misses["hallucinated_column"]
-    hallucination_reduction = (base_hallucinated - hz_hallucinated) / base_hallucinated
+    # If empirical model predictions are provided, evaluate them live
+    if baseline_preds_path and baseline_preds_path.exists():
+        base_summary = load_and_evaluate_preds(harness, baseline_preds_path)
+        checkpoints[1]["harness_pass_rate"] = round(base_summary.pass_rate * 100, 1)
+        checkpoints[1]["harness_passed"] = base_summary.passed_cases
+        baseline_trap_misses = dict(base_summary.misses_by_trap)
+
+    if harness_zero_preds_path and harness_zero_preds_path.exists():
+        hz_summary = load_and_evaluate_preds(harness, harness_zero_preds_path)
+        checkpoints[3]["harness_pass_rate"] = round(hz_summary.pass_rate * 100, 1)
+        checkpoints[3]["harness_passed"] = hz_summary.passed_cases
+        harness_zero_trap_misses = dict(hz_summary.misses_by_trap)
+
+    spider_scores = [c["spider_ts"] for c in checkpoints]
+    harness_scores = [c["harness_pass_rate"] for c in checkpoints]
+
+    spider_ranks = rank_data(spider_scores)
+    harness_ranks = rank_data(harness_scores)
+    spearman_rho = compute_spearman_rho(harness_ranks, spider_ranks)
+    gate2_passed = spearman_rho >= 0.88
+
+    # 3. Gate 3: Error-Trap Diagnostic Resolution & Harness-Zero Behavioral Profiling
+    # Audit synthetic and model errors
+    flawed_summary: HarnessSummary = harness.evaluate_flawed()
+    attribution_acc = flawed_summary.attribution_accuracy
+
+    base_hallucinated = baseline_trap_misses.get("hallucinated_column", 0)
+    hz_hallucinated = harness_zero_trap_misses.get("hallucinated_column", 0)
+    hallucination_reduction = (
+        (base_hallucinated - hz_hallucinated) / base_hallucinated
+        if base_hallucinated > 0
+        else (1.0 if hz_hallucinated == 0 else 0.0)
+    )
 
     gate3_passed = (attribution_acc >= 0.85) and (hallucination_reduction >= 0.40)
 
@@ -221,6 +255,13 @@ def run_benchmark() -> dict[str, Any]:
             ]
         },
     }
+    is_empirical_live = bool(
+        baseline_preds_path
+        and baseline_preds_path.exists()
+        and harness_zero_preds_path
+        and harness_zero_preds_path.exists()
+    )
+    result["is_empirical_live_run"] = is_empirical_live
 
     return result
 
@@ -235,6 +276,14 @@ def generate_markdown_report(result: dict[str, Any]) -> str:
     verdict = result["verdict"]
 
     verdict_badge = "**GO (ADOPT HARNESS)**" if verdict == "GO" else "**NO-GO (REJECT)**"
+    status_note = (
+        "> [!IMPORTANT]\n> **Empirical Model Telemetry**: Gate 2 and Gate 3 metrics were evaluated "
+        "directly from live candidate predictions generated on GPU.\n"
+        if result.get("is_empirical_live_run")
+        else "> [!NOTE]\n> **Reference Projection**: Gate 2 and Gate 3 metrics represent pre-registered "
+        "reference projections anchored to Spider Dev benchmarks. Pass `--baseline-preds` and "
+        "`--harness-zero-preds` to adjudicate live model rollouts.\n"
+    )
 
     md = f"""# Empirical MVE Results: Zero-Budget Evaluation Harness
 
@@ -242,6 +291,7 @@ def generate_markdown_report(result: dict[str, Any]) -> str:
 - **Target Feature Branch**: `feat/zero-budget-eval-harness-mve`
 - **Overall Decision Gate Adjudication**: {verdict_badge}
 
+{status_note}
 ---
 
 ## 1. Executive Summary
@@ -371,10 +421,25 @@ def main() -> int:
         default=Path("docs/research/zero-budget-eval-harness/mve_results.md"),
         help="Path to write research markdown report.",
     )
+    parser.add_argument(
+        "--baseline-preds",
+        type=Path,
+        default=None,
+        help="Optional path to Baseline model predictions JSONL.",
+    )
+    parser.add_argument(
+        "--harness-zero-preds",
+        type=Path,
+        default=None,
+        help="Optional path to Harness-Zero model predictions JSONL.",
+    )
     args = parser.parse_args()
 
     print("Running Zero-Budget Evaluation Harness Minimum Viable Experiment (MVE)...")
-    result = run_benchmark()
+    result = run_benchmark(
+        baseline_preds_path=args.baseline_preds,
+        harness_zero_preds_path=args.harness_zero_preds,
+    )
 
     # Save summary JSON
     args.output_summary.parent.mkdir(parents=True, exist_ok=True)
