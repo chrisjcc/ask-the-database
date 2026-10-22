@@ -35,6 +35,15 @@ jobs:
         run: |
           mypy src/
 
+      - name: Run fast zero-budget smoke evaluation (< 3.0s)
+        run: |
+          python scripts/run_smoke_eval.py --golden
+          python scripts/run_smoke_eval.py --flawed
+
+      - name: Verify zero-budget MVE decision gates
+        run: |
+          python scripts/run_zero_budget_mve.py
+
       - name: Run unit tests with pytest
         run: |
           pytest tests/ -v
