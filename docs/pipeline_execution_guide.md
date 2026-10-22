@@ -250,13 +250,33 @@ streamlit run app/streamlit_app.py
 
 ---
 
-## 6. Summary of Operational Makefile Commands
+## 6. Hugging Face Release & Card Generation
+
+Generate verified, production-ready Model Cards (`MODEL_README.md`) and Dataset Cards (`DATASET_README.md`) incorporating Spider benchmark accuracy and Zero-Budget MVE decision gate verdicts:
+
+```bash
+# Generate both cards locally into results/cards/
+make generate-hf-cards
+
+# Generate custom model card (e.g. Multi-Turn RLVR Agent)
+python3 scripts/release_to_hf.py --card-only --card-type model --model-variant rlvr_skyrl
+```
+
+For full details, see the dedicated operational manual: [`docs/huggingface_card_generation_guide.md`](huggingface_card_generation_guide.md).
+
+---
+
+## 7. Summary of Operational Makefile Commands
 
 | Command | Action | Output / Checkpoint |
 | :--- | :--- | :--- |
 | `make install` | Installs dependencies in editable mode | Virtualenv configured |
 | `make lint` | Runs Ruff linter and strict Mypy type-check | Zero warnings |
-| `make test` | Executes full Pytest unit test suite | 153/153 tests passing |
+| `make test` | Executes full Pytest unit test suite | 171/171 tests passing |
+| `make smoke-eval` | Runs fast in-process zero-budget smoke check (< 3.0s) | Sub-second regression check |
+| `make evaluate-zero-budget-mve` | Adjudicates 4-gate Zero-Budget MVE decision gates | `results/zero_budget_mve_summary.json` |
+| `make setup-hooks` | Installs native local git pre-commit hook (< 0.2s) | `.git/hooks/pre-commit` |
+| `make generate-hf-cards` | Generates Hugging Face Model & Dataset README cards | `results/cards/*.md` |
 | `make preprocess` | Downloads and tokenizes Spider datasets | `data/processed/train.jsonl` |
 | `make train-sft` | Trains Conventional SFT Baseline | `models/sft/checkpoint-final` |
 | `make collect-distillation` | Collects K_SQL reviewed trajectories | `data/distillation/reviewed_trajectories.jsonl` |
@@ -265,3 +285,4 @@ streamlit run app/streamlit_app.py
 | `make evaluate` | Evaluates models on Spider test suites | `results/evaluation_summary.json` |
 | `make compare-rlvr` | Compares RLVR sample efficiency & accuracy | `results/rlvr_sample_efficiency_report.md` |
 | `make evaluate-mve` | Adjudicates Decision Gates (`GO`/`NO-GO`) | `docs/research/harness-zero/mve_final_report.md` |
+
