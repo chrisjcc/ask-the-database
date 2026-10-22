@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-10-22 10:59:52 UTC",
+  "timestamp": "2026-10-22 13:33:02 UTC",
   "verdict": "GO",
   "gates": {
     "gate_1_latency": {
       "name": "Fast Execution Latency Budget",
       "threshold": "<= 3.0 seconds",
-      "observed": "0.0241 seconds (24.06 ms)",
+      "observed": "0.0159 seconds (15.91 ms)",
       "passed": true
     },
     "gate_2_correlation": {
@@ -109,7 +109,7 @@
       {
         "name": "Zero-Budget Evaluation Harness (Proposed)",
         "execution_engine": "Hermetic In-Memory SQLite + Mutation Fixtures",
-        "latency": "0.024 s",
+        "latency": "0.016 s",
         "cloud_cost": "$0.00 (Runs entirely in-process on CPU)",
         "granularity": "Fine-grained per-trap breakdown (5 failure modes)",
         "remediation": "Actionable Decision Table with concrete recommendations"

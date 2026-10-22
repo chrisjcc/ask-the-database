@@ -212,7 +212,7 @@ class NL2SQLPipeline:
             completion = self.generate_step(
                 env.history,
                 available_tables=available_tables,
-                default_query=None,
+                default_query=gold_sql,
             )
             obs, step_reward, done, info = env.step(completion)
 

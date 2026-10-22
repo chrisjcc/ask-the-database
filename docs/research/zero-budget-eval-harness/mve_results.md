@@ -1,6 +1,6 @@
 # Empirical MVE Results: Zero-Budget Evaluation Harness
 
-- **Date**: 2026-10-22 10:59:52 UTC
+- **Date**: 2026-10-22 13:33:02 UTC
 - **Target Feature Branch**: `feat/zero-budget-eval-harness-mve`
 - **Overall Decision Gate Adjudication**: **GO (ADOPT HARNESS)**
 
@@ -14,7 +14,7 @@
 This Minimum Viable Experiment (MVE) rigorously evaluated the proposed **Zero-Budget Evaluation Harness** for [AskTheDatabase](https://github.com/chrisjcc/ask-the-database) against the Conventional SFT Baseline and the Harness-Zero paradigm (Li 2026).
 
 The evaluation established four quantitative decision gates:
-1. **Gate 1 (Latency)**: Target $\le 3.0\text{ s}$ $\rightarrow$ **PASSED** (0.0241 seconds (24.06 ms)). Over $100\times$ faster than the 180s full Spider benchmark pass.
+1. **Gate 1 (Latency)**: Target $\le 3.0\text{ s}$ $\rightarrow$ **PASSED** (0.0159 seconds (15.91 ms)). Over $100\times$ faster than the 180s full Spider benchmark pass.
 2. **Gate 2 (Correlation)**: Target Spearman $\rho \ge 0.88$ $\rightarrow$ **PASSED** (rho = 1.0000). Preserves exact rank ordering of model capabilities across zero-shot, SFT, filtered rollouts, Harness-Zero, and RLVR.
 3. **Gate 3 (Diagnostic Resolution)**: Target $\ge 85\%$ attribution & $\ge 40\%$ hallucination drop $\rightarrow$ **PASSED** (Attribution = 100.0%, Hallucination Reduction = 60.0% (5 -> 2 misses)).
 4. **Gate 4 (Mutation Sensitivity)**: Target $100\%$ bug detection $\rightarrow$ **PASSED** (Bug Detection Rate = 100.0%, Naive Escape Rate = 5.7%).
@@ -25,7 +25,7 @@ The evaluation established four quantitative decision gates:
 
 | Gate ID | Criterion | Target Threshold | Observed Result | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| **Gate 1** | Fast Execution Latency | Wall-clock $\le 3.0\text{ s}$ | **0.0241 seconds (24.06 ms)** | **PASS** |
+| **Gate 1** | Fast Execution Latency | Wall-clock $\le 3.0\text{ s}$ | **0.0159 seconds (15.91 ms)** | **PASS** |
 | **Gate 2** | Benchmark Rank Correlation | Spearman $\rho \ge 0.88$ vs Spider Dev | **rho = 1.0000** | **PASS** |
 | **Gate 3** | Diagnostic Attribution & Profiling | Attribution $\ge 85\%$, Hallucination $\ge 40\%$ drop | **Attribution = 100.0%, Hallucination Reduction = 60.0% (5 -> 2 misses)** | **PASS** |
 | **Gate 4** | False-Positive Immunity | Injected Bug Detection Rate $= 100\%$ | **Bug Detection Rate = 100.0%, Naive Escape Rate = 5.7%** | **PASS** |
@@ -57,7 +57,7 @@ flowchart TD
 | :--- | :--- | :--- | :--- |
 | **Primary Goal** | Parameter learning from gold SQL | Internalizing procedural exploration | Instant pre-commit regression testing & root-cause diagnosis |
 | **Execution Engine** | Disk-based SQLite databases | Disk-based SQLite databases | **In-memory SQLite + Mutation-hardened fixtures** |
-| **Wall-Clock Latency** | 180–300 s | 210–350 s | **0.0241 seconds (24.06 ms)** |
+| **Wall-Clock Latency** | 180–300 s | 210–350 s | **0.0159 seconds (15.91 ms)** |
 | **Financial / Token Cost** | $0 local / Cluster GPU | $0 local / Cluster GPU | **$0.00 cloud tokens (runs locally on CPU)** |
 | **Diagnostic Resolution** | Coarse boolean pass/fail | Coarse boolean pass/fail | **Fine-grained 5-trap attribution (`misses_by_trap`)** |
 | **Actionable Guidance** | Manual SQL diff debugging | Recovery telemetry only | **Automated Decision Table (Prompt / Schema / Rubric / Reward)** |
