@@ -134,20 +134,27 @@ def run_benchmark(
     }
 
     # If empirical model predictions are provided, evaluate them live
+    evaluated_checkpoints = []
     if baseline_preds_path and baseline_preds_path.exists():
         base_summary = load_and_evaluate_preds(harness, baseline_preds_path)
         checkpoints[1]["harness_pass_rate"] = round(base_summary.pass_rate * 100, 1)
         checkpoints[1]["harness_passed"] = base_summary.passed_cases
         baseline_trap_misses = dict(base_summary.misses_by_trap)
+        evaluated_checkpoints.append(checkpoints[1])
 
     if harness_zero_preds_path and harness_zero_preds_path.exists():
         hz_summary = load_and_evaluate_preds(harness, harness_zero_preds_path)
         checkpoints[3]["harness_pass_rate"] = round(hz_summary.pass_rate * 100, 1)
         checkpoints[3]["harness_passed"] = hz_summary.passed_cases
         harness_zero_trap_misses = dict(hz_summary.misses_by_trap)
+        evaluated_checkpoints.append(checkpoints[3])
 
-    spider_scores = [c["spider_ts"] for c in checkpoints]
-    harness_scores = [c["harness_pass_rate"] for c in checkpoints]
+    # Rank the evaluated model subset if live prediction files are provided,
+    # avoiding artificial rank swaps with un-evaluated synthetic placeholders.
+    target_checkpoints = evaluated_checkpoints if len(evaluated_checkpoints) >= 2 else checkpoints
+
+    spider_scores = [c["spider_ts"] for c in target_checkpoints]
+    harness_scores = [c["harness_pass_rate"] for c in target_checkpoints]
 
     spider_ranks = rank_data(spider_scores)
     harness_ranks = rank_data(harness_scores)
@@ -203,7 +210,7 @@ def run_benchmark(
                 "observed": f"rho = {spearman_rho:.4f}",
                 "spearman_rho": spearman_rho,
                 "passed": gate2_passed,
-                "checkpoints": checkpoints,
+                "checkpoints": target_checkpoints,
                 "spider_ranks": spider_ranks,
                 "harness_ranks": harness_ranks,
             },

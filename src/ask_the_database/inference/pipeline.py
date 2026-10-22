@@ -92,15 +92,45 @@ class NL2SQLPipeline:
             device_target = self.device
             if device_target == "auto":
                 device_target = "auto" if torch.cuda.is_available() else "cpu"
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, trust_remote_code=True)
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_path,
-                torch_dtype=self.torch_dtype or torch.bfloat16,
-                device_map=device_target,
-                trust_remote_code=True,
+            # Check if this is a PEFT adapter directory
+            path_obj = Path(self.model_path)
+            adapter_conf_path = path_obj / "adapter_config.json"
+            if adapter_conf_path.exists():
+                import json
+
+                from peft import PeftModel
+
+                with open(adapter_conf_path, encoding="utf-8") as f:
+                    conf = json.load(f)
+                base_model_name = conf.get(
+                    "base_model_name_or_path", "Qwen/Qwen2.5-Coder-7B-Instruct"
+                )
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    base_model_name, trust_remote_code=True
+                )
+                base_model = AutoModelForCausalLM.from_pretrained(
+                    base_model_name,
+                    torch_dtype=self.torch_dtype or torch.bfloat16,
+                    device_map=device_target,
+                    trust_remote_code=True,
+                )
+                self.model = PeftModel.from_pretrained(base_model, str(path_obj))
+            else:
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    self.model_path, trust_remote_code=True
+                )
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    self.model_path,
+                    torch_dtype=self.torch_dtype or torch.bfloat16,
+                    device_map=device_target,
+                    trust_remote_code=True,
+                )
+        except Exception as e:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "Could not load model weights from %s: %s", self.model_path, e
             )
-        except Exception:
-            pass
 
     def generate_step(
         self,
@@ -147,7 +177,7 @@ class NL2SQLPipeline:
         if len(assistant_msgs) == 1:
             return f'<tool name="sample_data">{target_table}</tool>'
 
-        query = default_query or f"SELECT * FROM {target_table};"
+        query = default_query or f"SELECT * FROM {target_table} LIMIT 5;"
         return f"<final_answer>{query}</final_answer>"
 
     def run_interactive(
@@ -182,7 +212,7 @@ class NL2SQLPipeline:
             completion = self.generate_step(
                 env.history,
                 available_tables=available_tables,
-                default_query=gold_sql,
+                default_query=None,
             )
             obs, step_reward, done, info = env.step(completion)
 
