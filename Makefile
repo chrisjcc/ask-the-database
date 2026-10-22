@@ -17,7 +17,7 @@ MYPY := $(if $(wildcard $(VENV)/bin/mypy),$(VENV)/bin/mypy,mypy)
 PYTEST := $(if $(wildcard $(VENV)/bin/pytest),$(VENV)/bin/pytest,pytest)
 DVC := $(if $(wildcard $(VENV)/bin/dvc),$(VENV)/bin/dvc,dvc)
 
-.PHONY: help install install-dev lint format test preprocess train-sft train-filtered train-grpo collect-distillation train-harness-zero evaluate evaluate-mve compare-rlvr smoke-eval evaluate-zero-budget-mve setup-hooks
+.PHONY: help install install-dev lint format test preprocess train-sft train-filtered train-grpo collect-distillation train-harness-zero evaluate evaluate-mve compare-rlvr smoke-eval evaluate-zero-budget-mve setup-hooks generate-hf-cards
 
 help:
 	@echo "AskTheDatabase - Operational Commands:"
@@ -38,6 +38,7 @@ help:
 	@echo "  make evaluate             Evaluate benchmark suites (Spider, DK, Syn, Realistic)"
 	@echo "  make evaluate-mve         Adjudicate 4-condition MVE decision gates & publish report"
 	@echo "  make compare-rlvr         Compare sample efficiency & asymptotic accuracy (Run A vs Run B)"
+	@echo "  make generate-hf-cards    Generate Hugging Face Model & Dataset README cards"
 
 install:
 	$(PIP) install --upgrade pip
@@ -95,6 +96,10 @@ evaluate-zero-budget-mve:
 setup-hooks:
 	@echo "Installing native git pre-commit hook..."
 	@mkdir -p .git/hooks
-	@printf '#!/usr/bin/env bash\nset -e\necho "[pre-commit] Running ruff lint & format checks..."\nruff check src/ scripts/ tests/ app/\nruff format --check src/ scripts/ tests/ app/\necho "[pre-commit] Running zero-budget evaluation smoke gate (< 3.0s)..."\npython scripts/run_smoke_eval.py --golden\n' > .git/hooks/pre-commit
+	@printf '#!/usr/bin/env bash\nset -e\nif [ -d .venv/bin ]; then export PATH="$$PWD/.venv/bin:$$PATH"; fi\necho "[pre-commit] Running ruff lint & format checks..."\nruff check src/ scripts/ tests/ app/\nruff format --check src/ scripts/ tests/ app/\necho "[pre-commit] Running zero-budget evaluation smoke gate (< 3.0s)..."\npython scripts/run_smoke_eval.py --golden\n' > .git/hooks/pre-commit
 	@chmod +x .git/hooks/pre-commit
 	@echo "Git pre-commit hook installed successfully! (Runs ruff and make smoke-eval in < 0.2s before each commit)"
+
+generate-hf-cards:
+	$(PYTHON) scripts/release_to_hf.py --card-only $(ARGS)
+
