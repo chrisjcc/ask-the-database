@@ -142,9 +142,7 @@ def run_benchmark() -> dict[str, Any]:
     total_injected_bugs = 35
     mutant_detected_bugs = 35
     naive_detected_bugs = 33
-    naive_escape_rate = (
-        total_injected_bugs - naive_detected_bugs
-    ) / total_injected_bugs
+    naive_escape_rate = (total_injected_bugs - naive_detected_bugs) / total_injected_bugs
     bug_detection_rate = mutant_detected_bugs / total_injected_bugs
 
     gate4_passed = bug_detection_rate == 1.0
@@ -236,9 +234,7 @@ def generate_markdown_report(result: dict[str, Any]) -> str:
     g4 = gates["gate_4_immunity"]
     verdict = result["verdict"]
 
-    verdict_badge = (
-        "**GO (ADOPT HARNESS)**" if verdict == "GO" else "**NO-GO (REJECT)**"
-    )
+    verdict_badge = "**GO (ADOPT HARNESS)**" if verdict == "GO" else "**NO-GO (REJECT)**"
 
     md = f"""# Empirical MVE Results: Zero-Budget Evaluation Harness
 
@@ -398,9 +394,7 @@ def main() -> int:
     print("=" * 60)
     for _gate_id, gate in result["gates"].items():
         status = "PASS" if gate["passed"] else "FAIL"
-        print(
-            f"[{status}] {gate['name']}: {gate['observed']} (Threshold: {gate['threshold']})"
-        )
+        print(f"[{status}] {gate['name']}: {gate['observed']} (Threshold: {gate['threshold']})")
     print("=" * 60)
 
     return 0 if result["verdict"] == "GO" else 1
