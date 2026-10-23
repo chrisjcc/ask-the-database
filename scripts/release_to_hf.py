@@ -419,12 +419,28 @@ def run_deployment_pipeline(cfg: Any) -> None:
     api = HfApi(token=hf_token)
     logger.info("HfApi initialized successfully.")
 
-    # 1. Resolve model variant and output paths
+    # 1. Resolve model variant, summary, and output paths
     model_repo = getattr(cfg, "model_repo", DEFAULT_MODEL_REPO)
     dataset_repo = getattr(cfg, "dataset_repo", DEFAULT_DATASET_REPO)
     model_variant = getattr(cfg, "model_variant", "harness_zero")
+    base_model = getattr(cfg, "base_model", DEFAULT_BASE_MODEL)
+    release_tag = getattr(cfg, "release_tag", "")
+
+    summary_data: dict[str, Any] | None = None
+    summary_json = getattr(cfg, "summary_json", "results/evaluation_summary.json")
+    if summary_json and Path(summary_json).is_file():
+        try:
+            summary_data = json.loads(Path(summary_json).read_text(encoding="utf-8"))
+            logger.info("Loaded benchmark summary for deployment from: %s", summary_json)
+        except Exception as e:
+            logger.warning("Could not read summary JSON: %s", e)
 
     # 2. Upload dataset card and dataset files if configured
+    try:
+        api.create_repo(repo_id=dataset_repo, repo_type="dataset", exist_ok=True)
+    except Exception as e:
+        logger.warning("create_repo for dataset %s returned: %s", dataset_repo, e)
+
     with tempfile.TemporaryDirectory(prefix="ask-the-database-data-") as tmp_dir:
         readme_path = Path(tmp_dir) / "README.md"
         readme_path.write_text(
@@ -440,6 +456,11 @@ def run_deployment_pipeline(cfg: Any) -> None:
         )
 
     # 3. Upload model card
+    try:
+        api.create_repo(repo_id=model_repo, repo_type="model", exist_ok=True)
+    except Exception as e:
+        logger.warning("create_repo for model %s returned: %s", model_repo, e)
+
     with tempfile.TemporaryDirectory(prefix="ask-the-database-model-") as tmp_dir:
         readme_path = Path(tmp_dir) / "README.md"
         readme_path.write_text(
@@ -447,6 +468,9 @@ def run_deployment_pipeline(cfg: Any) -> None:
                 model_repo=model_repo,
                 model_variant=model_variant,
                 dataset_repo=dataset_repo,
+                base_model=base_model,
+                release_tag=release_tag,
+                results_summary=summary_data,
             ),
             encoding="utf-8",
         )
@@ -525,9 +549,11 @@ def main() -> None:
         help="Path to evaluation summary JSON file (default: results/evaluation_summary.json).",
     )
     parser.add_argument(
+        "--publish-cards",
         "--deploy",
         action="store_true",
-        help="Deploy generated artifacts to Hugging Face Hub (requires HF_TOKEN).",
+        dest="deploy",
+        help="Deploy/publish generated README cards to Hugging Face Hub (requires HF_TOKEN).",
     )
 
     args = parser.parse_args()

@@ -17,7 +17,7 @@ MYPY := $(if $(wildcard $(VENV)/bin/mypy),$(VENV)/bin/mypy,mypy)
 PYTEST := $(if $(wildcard $(VENV)/bin/pytest),$(VENV)/bin/pytest,pytest)
 DVC := $(if $(wildcard $(VENV)/bin/dvc),$(VENV)/bin/dvc,dvc)
 
-.PHONY: help install install-dev lint format test preprocess train-sft train-filtered train-grpo collect-distillation train-harness-zero evaluate evaluate-mve compare-rlvr smoke-eval evaluate-zero-budget-mve setup-hooks generate-hf-cards
+.PHONY: help install install-dev lint format test preprocess train-sft train-filtered train-grpo collect-distillation train-harness-zero evaluate evaluate-mve compare-rlvr smoke-eval evaluate-zero-budget-mve setup-hooks generate-hf-cards publish-hf-cards
 
 help:
 	@echo "AskTheDatabase - Operational Commands:"
@@ -39,6 +39,7 @@ help:
 	@echo "  make evaluate-mve         Adjudicate 4-condition MVE decision gates & publish report"
 	@echo "  make compare-rlvr         Compare sample efficiency & asymptotic accuracy (Run A vs Run B)"
 	@echo "  make generate-hf-cards    Generate Hugging Face Model & Dataset README cards"
+	@echo "  make publish-hf-cards     Publish Model & Dataset README cards to Hugging Face Hub"
 
 install:
 	$(PIP) install --upgrade pip
@@ -102,4 +103,7 @@ setup-hooks:
 
 generate-hf-cards:
 	$(PYTHON) scripts/release_to_hf.py --card-only $(ARGS)
+
+publish-hf-cards:
+	$(PYTHON) scripts/release_to_hf.py --publish-cards $(ARGS)
 

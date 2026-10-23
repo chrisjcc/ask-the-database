@@ -18,16 +18,26 @@ When publishing fine-tuned models and datasets to the Hugging Face Hub, high-qua
 
 ## 2. Quickstart Operational Commands
 
-### 2.1 One-Click Generation via Make
-Generate both the Model Card and Dataset Card into `results/cards/` with a single command:
+### 2.1 One-Click Operations via Make
 
+**Local Generation (Offline, No Credentials Required):**
+Generate both the Model Card and Dataset Card into `results/cards/`:
 ```bash
 make generate-hf-cards
 ```
-
 Outputs generated:
 - `results/cards/DATASET_README.md`
 - `results/cards/MODEL_README.md`
+
+**Publish to Hugging Face Hub (Requires `HF_TOKEN`):**
+Upload the generated cards directly to your Hugging Face repositories:
+```bash
+# Publish to default repos (chrisjcc/ask-the-database-coder-7b and trajectories)
+make publish-hf-cards
+
+# Publish to custom repos (e.g. chrisjcc/ask-the-database)
+make publish-hf-cards ARGS="--model-repo chrisjcc/ask-the-database --dataset-repo chrisjcc/ask-the-database"
+```
 
 ---
 
