@@ -333,23 +333,9 @@ On \textbf{Easy} queries, Condition 4 shows a modest $+4.7\,\text{pp}$ gain over
 
 \begin{figure}[t]
     \centering
-    \fbox{
-    \begin{minipage}{0.92\columnwidth}
-        \centering
-        \vspace{6pt}
-        \textbf{[ Empirical RLVR Training Dynamics: SFT vs.\ Harness-Zero ]}
-        \vspace{6pt}
-        \begin{itemize}[leftmargin=*,itemsep=1pt]
-            \item \textbf{Curve A (Harness-Zero $\to$ GRPO)}: Instant non-zero intra-group reward variance ($\operatorname{std}(R) > 0$) from Step 1; rapid monotonic climb to $64.8\%$ TS.
-            \item \textbf{Curve B (SFT Baseline $\to$ GRPO)}: Extended zero-variance gradient plateau ($A_i = 0$ for steps 1--45); delayed recovery, plateauing at $56.2\%$ TS.
-        \end{itemize}
-        \vspace{4pt}
-        \textit{\small [Placeholder Figure: Full Slurm multi-GPU training reward progression across 200 optimization steps. Refer to project artifact logs.]}
-        \vspace{6pt}
-    \end{minipage}
-    }
-    \caption{\textbf{RLVR Sample Efficiency and Cold-Start Dynamics.} Harness-Zero pre-grounding prevents vanishing policy gradients and bypasses the initial exploration plateau.}
-    \label{fig:rlvr_convergence_placeholder}
+    \includegraphics[width=\columnwidth]{figures/rlvr_training_curve.png}
+    \caption{\textbf{RLVR Sample Efficiency and Cold-Start Dynamics.} Harness-Zero pre-grounding prevents vanishing policy gradients by providing immediate intra-group reward variance ($\operatorname{std}(R) > 0$), bypassing the zero-variance exploration plateau ($A_i = 0$) encountered by conventional SFT.}
+    \label{fig:rlvr_convergence}
 \end{figure}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -471,28 +457,12 @@ The experimental results led to an unambiguous architectural conclusion:
 
 \textbf{Final Architectural Recommendation}: We declined to merge standalone verification into \texttt{main} as the default pipeline. Harness-Zero remains the authoritative, highly efficient, zero-overhead foundation for AskTheDatabase. The \texttt{SQLVerifier} and \texttt{VerifierSelector} modules are preserved as an optional, configurable test-time scaling add-on for high-compute batch regimes where $5.9\times$ compute overhead and $\sim 1.2\,\text{s}$ latency are acceptable.
 
-\begin{figure*}[h!]
+\begin{figure}[h!]
     \centering
-    \fbox{
-    \begin{minipage}{0.95\textwidth}
-        \centering
-        \vspace{6pt}
-        \textbf{[ Empirical Pareto Frontier: Accuracy vs.\ Inference Compute Multiplier ]}
-        \vspace{6pt}
-        \begin{itemize}[leftmargin=*,itemsep=1pt]
-            \item \textbf{Point A (SFT Baseline)}: $51.6\%$ TS, $1.0\times$ Compute ($310\,\text{ms}$).
-            \item \textbf{Point B (Standalone Verifier Bo5)}: $56.2\%$ TS, $5.8\times$ Compute ($1{,}120\,\text{ms}$) $\to$ \textit{Sub-optimal (below Harness-Zero)}.
-            \item \textbf{Point C (Harness-Zero SFT)}: $58.4\%$ TS, $1.0\times$ Compute ($350\,\text{ms}$) $\to$ \textbf{Pareto Optimal Frontier}.
-            \item \textbf{Point D (Compound: Harness-Zero + Verifier Bo5)}: $61.8\%$ TS, $5.9\times$ Compute ($1{,}180\,\text{ms}$) $\to$ \textbf{High-Compute Frontier}.
-        \end{itemize}
-        \vspace{4pt}
-        \textit{\small [Placeholder Figure: 2D Pareto scatter plot mapping Token Cost Multiplier ($x$-axis) against Test-Suite Accuracy ($y$-axis).]}
-        \vspace{6pt}
-    \end{minipage}
-    }
-    \caption{\textbf{Inference Pareto Frontier for Text-to-SQL Alignment.} Standalone verification is dominated by Harness-Zero, while the compound architecture establishes the state-of-the-art upper bound.}
-    \label{fig:pareto_frontier_placeholder}
-\end{figure*}
+    \includegraphics[width=0.88\textwidth]{figures/pareto_frontier.png}
+    \caption{\textbf{Inference Pareto Frontier for Text-to-SQL Alignment.} Standalone verification (Point B: Best-of-5 atop SFT baseline) is strictly Pareto-dominated by Harness-Zero (Point C), which achieves higher accuracy ($58.4\%$ vs.\ $56.2\%$ TS) at $5.8\times$ lower compute cost ($350\,\text{ms}$ vs.\ $1{,}120\,\text{ms}$). Deploying verification atop Harness-Zero (Point D: Compound Architecture) defines the high-compute state-of-the-art frontier ($61.8\%$ TS).}
+    \label{fig:pareto_frontier}
+\end{figure}
 
 \section{Interactive Tool Registry and System Prompt Specifications}
 \label{sec:appendix_prompts}
