@@ -42,7 +42,7 @@ def classify_sql_difficulty(sql: str) -> str:
     except Exception:
         return "medium"
 
-    if isinstance(ast, (exp.Union, exp.Intersect, exp.Except)):
+    if isinstance(ast, exp.Union | exp.Intersect | exp.Except):
         return "extra"
 
     tables = list(ast.find_all(exp.Table))

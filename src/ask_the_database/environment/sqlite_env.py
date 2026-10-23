@@ -119,7 +119,7 @@ class SQLiteEnvironment(BaseSQLEnvironment):
         expr = expressions[0]
 
         # Verify root statement is a read-only query
-        if not isinstance(expr, (exp.Query, exp.Select, exp.Union, exp.Intersect, exp.Except)):
+        if not isinstance(expr, exp.Query | exp.Select | exp.Union | exp.Intersect | exp.Except):
             raise SQLSecurityViolationError(
                 f"Prohibited SQL statement type: {type(expr).__name__}. Only read-only queries are permitted."
             )

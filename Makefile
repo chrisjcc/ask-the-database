@@ -17,7 +17,7 @@ MYPY := $(if $(wildcard $(VENV)/bin/mypy),$(VENV)/bin/mypy,mypy)
 PYTEST := $(if $(wildcard $(VENV)/bin/pytest),$(VENV)/bin/pytest,pytest)
 DVC := $(if $(wildcard $(VENV)/bin/dvc),$(VENV)/bin/dvc,dvc)
 
-.PHONY: help install install-dev lint format test preprocess train-sft train-filtered train-grpo collect-distillation train-harness-zero evaluate evaluate-mve compare-rlvr
+.PHONY: help install install-dev lint format test preprocess train-sft train-filtered train-grpo collect-distillation train-harness-zero evaluate evaluate-mve compare-rlvr smoke-eval evaluate-zero-budget-mve setup-hooks generate-hf-cards publish-hf-cards
 
 help:
 	@echo "AskTheDatabase - Operational Commands:"
@@ -26,6 +26,9 @@ help:
 	@echo "  make lint                 Run ruff linter and mypy type checks"
 	@echo "  make format               Auto-format code via ruff"
 	@echo "  make test                 Execute pytest test suite"
+	@echo "  make smoke-eval           Execute fast in-process zero-budget smoke check (< 3.0s)"
+	@echo "  make evaluate-zero-budget-mve Adjudicate 3-way Zero-Budget MVE decision gates"
+	@echo "  make setup-hooks          Install local git pre-commit hook (runs smoke-eval & lint in < 0.2s)"
 	@echo "  make preprocess           Download datasets and run normalization pipeline"
 	@echo "  make train-sft            Execute SFT warmup training on base model (Condition 2)"
 	@echo "  make train-filtered       Train SFT on filtered successful rollouts (Condition 3)"
@@ -35,6 +38,8 @@ help:
 	@echo "  make evaluate             Evaluate benchmark suites (Spider, DK, Syn, Realistic)"
 	@echo "  make evaluate-mve         Adjudicate 4-condition MVE decision gates & publish report"
 	@echo "  make compare-rlvr         Compare sample efficiency & asymptotic accuracy (Run A vs Run B)"
+	@echo "  make generate-hf-cards    Generate Hugging Face Model & Dataset README cards"
+	@echo "  make publish-hf-cards     Publish Model & Dataset README cards to Hugging Face Hub"
 
 install:
 	$(PIP) install --upgrade pip
@@ -82,3 +87,23 @@ evaluate-mve:
 
 compare-rlvr:
 	$(PYTHON) scripts/compare_rlvr_efficiency.py $(ARGS)
+
+smoke-eval:
+	$(PYTHON) scripts/run_smoke_eval.py $(ARGS)
+
+evaluate-zero-budget-mve:
+	$(PYTHON) scripts/run_zero_budget_mve.py $(ARGS)
+
+setup-hooks:
+	@echo "Installing native git pre-commit hook..."
+	@mkdir -p .git/hooks
+	@printf '#!/usr/bin/env bash\nset -e\nif [ -d .venv/bin ]; then export PATH="$$PWD/.venv/bin:$$PATH"; fi\necho "[pre-commit] Running ruff lint & format checks..."\nruff check src/ scripts/ tests/ app/\nruff format --check src/ scripts/ tests/ app/\necho "[pre-commit] Running zero-budget evaluation smoke gate (< 3.0s)..."\npython scripts/run_smoke_eval.py --golden\n' > .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "Git pre-commit hook installed successfully! (Runs ruff and make smoke-eval in < 0.2s before each commit)"
+
+generate-hf-cards:
+	$(PYTHON) scripts/release_to_hf.py --card-only $(ARGS)
+
+publish-hf-cards:
+	$(PYTHON) scripts/release_to_hf.py --publish-cards $(ARGS)
+
