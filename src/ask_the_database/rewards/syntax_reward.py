@@ -64,7 +64,7 @@ class SQLSyntaxValidator:
 
         # Enforce that query is a SELECT, set operation, or CTE with SELECT
         if not isinstance(
-            ast, (exp.Query, exp.Select, exp.Union, exp.Intersect, exp.Except)
+            ast, exp.Query | exp.Select | exp.Union | exp.Intersect | exp.Except
         ) and not (isinstance(ast, exp.Expression) and ast.find(exp.Select)):
             return SyntaxValidationResult(
                 is_valid=False,

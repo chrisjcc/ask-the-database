@@ -74,6 +74,8 @@ The system architecture is structured across five modular phases:
 The complete technical design, operational execution manuals, and research studies are documented in `docs/`:
 
 * 🚀 **[End-to-End Pipeline Execution Guide](docs/pipeline_execution_guide.md)**: Operational manual for training, distillation, RLVR, and benchmark evaluation.
+* 📦 **[Hugging Face Card Generation Guide](docs/huggingface_card_generation_guide.md)**: Operational manual for generating model/dataset cards and deploying to Hugging Face Hub.
+* ⚡ **[Zero-Budget Evaluation Harness MVE Final Report](docs/research/zero-budget-eval-harness/mve_final_report.md)**: Sub-second evaluation micro-harness, decision gates, and mutation hardening.
 * 🔬 **[Harness-Zero MVE Final Research Report](docs/research/harness-zero/mve_final_report.md)**: Empirical 4-condition MVE results, decision gate adjudication, and GRPO convergence analysis.
 * 📄 **[Harness-Zero Feasibility Study](docs/research/harness-zero/feasibility_study.md)**: Theoretical foundation, agent-as-harness methodology, and post-training architecture.
 * 📖 **[Master Architecture Plan](docs/nl2sql_post_training_architecture_plan.md)**: End-to-end blueprint covering data synthesis, reward engineering, GRPO/SkyRL algorithms, and ablation methodology.
@@ -204,6 +206,23 @@ sbatch slurm/06_demo_tunnel.slurm
 cat slurm/logs/demo_<job_id>.log
 ```
 
+### 📦 Hugging Face Model & Dataset Card Generation
+The repository provides automated tools to generate and publish Hugging Face Model Cards (`MODEL_README.md`) and Dataset Cards (`DATASET_README.md`) with embedded Spider benchmark metrics and Zero-Budget MVE decision gate results:
+
+```bash
+# 1. Local Offline Generation (inspect without remote credentials):
+make generate-hf-cards
+
+# 2. Publish to Hugging Face Hub (requires HF_TOKEN):
+make publish-hf-cards ARGS="--model-repo chrisjcc/ask-the-database --dataset-repo chrisjcc/ask-the-database"
+
+# Or invoke the CLI generator directly:
+python scripts/release_to_hf.py --publish-cards \
+  --model-repo chrisjcc/ask-the-database \
+  --dataset-repo chrisjcc/ask-the-database
+```
+For complete flag references, metadata schemas, and operational instructions, see the **[Hugging Face Card Generation Guide](docs/huggingface_card_generation_guide.md)**.
+
 ---
 
 ## 🏗️ Repository Structure
@@ -225,11 +244,15 @@ ask-the-database/
 ├── docs/                 # End-to-end architecture blueprint & phase plans
 │   ├── ablation_report.md
 │   ├── evaluation_leaderboard.md
+│   ├── huggingface_card_generation_guide.md
 │   └── nl2sql_post_training_architecture_plan.md
 ├── scripts/              # Executable CLI entry points
 │   ├── evaluate_benchmark.py
 │   ├── generate_report.py
 │   ├── preprocess_data.py
+│   ├── release_to_hf.py      # Hugging Face card generator & Hub deployer
+│   ├── run_smoke_eval.py     # Fast sub-second zero-budget smoke evaluation
+│   ├── run_zero_budget_mve.py # 4-gate Zero-Budget MVE decision runner
 │   ├── train_rlvr.py
 │   └── train_sft.py
 ├── slurm/                # Production HPC Slurm GPU scripts

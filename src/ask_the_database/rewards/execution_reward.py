@@ -34,7 +34,7 @@ class ExecutionEquivalenceEvaluator:
             return None
         if isinstance(cell, float):
             return round(cell, 4)
-        if isinstance(cell, (int, bool)):
+        if isinstance(cell, int | bool):
             return cell
         # String normalization: strip whitespace and standardize casing
         str_val = str(cell).strip()

@@ -74,7 +74,7 @@ class ReviewDecision:
             return f"<final_answer>{str(self.replacement_payload).strip()}</final_answer>"
 
         if self.replacement_action == "inspect_schema":
-            if isinstance(self.replacement_payload, (list, set, tuple)):
+            if isinstance(self.replacement_payload, list | set | tuple):
                 payload_str = json.dumps([str(t).strip() for t in self.replacement_payload])
             elif isinstance(self.replacement_payload, str):
                 cleaned = self.replacement_payload.strip()
@@ -236,7 +236,7 @@ class HarnessReviewer:
                 }
             )
             return res if isinstance(res, DictConfig) else OmegaConf.create({})
-        elif isinstance(config, (str, Path)):
+        elif isinstance(config, str | Path):
             loaded = OmegaConf.load(str(config))
             return loaded if isinstance(loaded, DictConfig) else OmegaConf.create({})
         elif isinstance(config, dict):

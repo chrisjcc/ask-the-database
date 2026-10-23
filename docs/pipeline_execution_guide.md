@@ -16,12 +16,12 @@ This operational guide provides end-to-end instructions for running the complete
    ┌──────────────────────────────────────────────────────────────────────────────────┐
    │ 2. Supervised Fine-Tuning & Distillation                                         │
    │    • 2.1 Conventional SFT Warmup (`make train-sft`)                              │
-   │    • 2.2 Harness-Zero Trajectory Distillation (`make collect-distillation` / SFT) │
+   │    • 2.2 Harness-Zero Trajectory Distillation (`make collect-distillation` / SFT)│
    └─────────────────────────────────────┬────────────────────────────────────────────┘
                                          │
                                          ▼
    ┌──────────────────────────────────────────────────────────────────────────────────┐
-   │ 3. Multi-Turn RLVR Agent Training (SkyRL / GRPO in `SkyRLSQLEnvironment`)       │
+   │ 3. Multi-Turn RLVR Agent Training (SkyRL / GRPO in `SkyRLSQLEnvironment`)        │
    │    • 3.1 Fast Dry-Run Smoke Test (`make train-grpo ARGS="dry_run=true"`)         │
    │    • 3.2 Single-Node Policy Training (`make train-grpo`)                         │
    │    • 3.3 Multi-GPU Cluster Sweeps (`sbatch scripts/slurm/launch_rlvr_sweep.sh`)  │
@@ -250,13 +250,50 @@ streamlit run app/streamlit_app.py
 
 ---
 
-## 6. Summary of Operational Makefile Commands
+## 6. Hugging Face Release & Card Generation
+
+The repository provides automated tooling to generate and publish Model Cards (`MODEL_README.md`) and Dataset Cards (`DATASET_README.md`) incorporating Spider benchmark metrics and Zero-Budget MVE decision gate results.
+
+### 6.1 Local Offline Inspection (`make generate-hf-cards`)
+```bash
+make generate-hf-cards
+```
+- **Invokes:** `python3 scripts/release_to_hf.py --card-only`
+- **Output:** Writes markdown cards locally to `results/cards/DATASET_README.md` and `results/cards/MODEL_README.md`.
+- **Purpose:** Allows offline review and verification of metadata, benchmark tables, and tool usage examples before publishing to remote repositories.
+
+### 6.2 Remote Hub Publication (`make publish-hf-cards`)
+Deploy the generated cards directly to Hugging Face Hub:
+- **Model Card:** [https://huggingface.co/chrisjcc/ask-the-database](https://huggingface.co/chrisjcc/ask-the-database)
+- **Dataset Card:** [https://huggingface.co/datasets/chrisjcc/ask-the-database](https://huggingface.co/datasets/chrisjcc/ask-the-database)
+
+```bash
+# Publish via make with target repositories
+make publish-hf-cards ARGS="--model-repo chrisjcc/ask-the-database --dataset-repo chrisjcc/ask-the-database"
+
+# Or directly via Python CLI
+python3 scripts/release_to_hf.py --publish-cards \
+  --model-repo chrisjcc/ask-the-database \
+  --dataset-repo chrisjcc/ask-the-database
+```
+*Note: Requires `HF_TOKEN` with write permissions in your environment or `.env` file.*
+
+For full details and CLI flag references, see [`docs/huggingface_card_generation_guide.md`](huggingface_card_generation_guide.md).
+
+---
+
+## 7. Summary of Operational Makefile Commands
 
 | Command | Action | Output / Checkpoint |
 | :--- | :--- | :--- |
 | `make install` | Installs dependencies in editable mode | Virtualenv configured |
 | `make lint` | Runs Ruff linter and strict Mypy type-check | Zero warnings |
-| `make test` | Executes full Pytest unit test suite | 153/153 tests passing |
+| `make test` | Executes full Pytest unit test suite | 171/171 tests passing |
+| `make smoke-eval` | Runs fast in-process zero-budget smoke check (< 3.0s) | Sub-second regression check |
+| `make evaluate-zero-budget-mve` | Adjudicates 4-gate Zero-Budget MVE decision gates | `results/zero_budget_mve_summary.json` |
+| `make setup-hooks` | Installs native local git pre-commit hook (< 0.2s) | `.git/hooks/pre-commit` |
+| `make generate-hf-cards` | Generates local Hugging Face README cards | `results/cards/*.md` |
+| `make publish-hf-cards` | Publishes README cards to Hugging Face Hub | Remote Hub repositories |
 | `make preprocess` | Downloads and tokenizes Spider datasets | `data/processed/train.jsonl` |
 | `make train-sft` | Trains Conventional SFT Baseline | `models/sft/checkpoint-final` |
 | `make collect-distillation` | Collects K_SQL reviewed trajectories | `data/distillation/reviewed_trajectories.jsonl` |
@@ -265,3 +302,4 @@ streamlit run app/streamlit_app.py
 | `make evaluate` | Evaluates models on Spider test suites | `results/evaluation_summary.json` |
 | `make compare-rlvr` | Compares RLVR sample efficiency & accuracy | `results/rlvr_sample_efficiency_report.md` |
 | `make evaluate-mve` | Adjudicates Decision Gates (`GO`/`NO-GO`) | `docs/research/harness-zero/mve_final_report.md` |
+
