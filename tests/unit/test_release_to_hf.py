@@ -18,6 +18,7 @@ def test_generate_dataset_card() -> None:
     assert "reviewed_trajectories" in card
     assert "filtered_rollouts" in card
     assert "spider" in card
+    assert "K_SQL" in card
 
 
 def test_generate_model_card() -> None:
@@ -33,6 +34,10 @@ def test_generate_model_card() -> None:
     assert "MVE ADJUDICATION DECISION: GO" in card
     assert "text-to-sql" in card
     assert "\\schema" in card
+    assert "0.1268 s (126.80 ms)" in card
+    assert "Spearman ρ = 1.0000" in card
+    assert "10 → 0 misses" in card
+    assert "< 2.0 s" in card
 
 
 def test_cli_generate_cards(tmp_path: Path) -> None:

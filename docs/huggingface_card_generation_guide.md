@@ -139,12 +139,12 @@ The generated Model Card (`MODEL_README.md`) provides a complete, production-gra
 
 4. **Empirical Benchmark & Decision Gate Telemetry**:
    - **Spider Dev Benchmark**: Ingests `results/evaluation_summary.json` to render live Execution Accuracy (EX), Test Suite Accuracy (TS), and Valid Execution Rate (VA).
-   - **Zero-Budget MVE Gates**: Embeds verified pre-registered gate adjudications:
-     - **Gate 1 (Fast Execution Latency Budget):** $0.1268\text{ s}$ ($126.80\text{ ms}$) across 5 passes ($\le 3.0\text{ s}$ budget).
-     - **Gate 2 (Benchmark Rank Correlation):** Spearman $\rho = 1.0000$ ($\rho \ge 0.88$ threshold).
-     - **Gate 3 (Diagnostic Resolution):** $100.0\%$ Attribution, $100.0\%$ Hallucination Reduction ($10 \to 0$ misses).
-     - **Gate 4 (Mutation Sensitivity):** $100.0\%$ Bug Detection Rate, $0.0\%$ Escape Rate on dual fixtures.
-     - **Official Verdict:** `MVE ADJUDICATION DECISION: GO`.
+   - **Zero-Budget MVE Gates (Clean Markdown with Portable Unicode)**:
+     - **Gate 1 (Latency Budget):** 0.1268 s (126.80 ms) across 5 passes (target: ≤ 3.0 s) → **PASSED**
+     - **Gate 2 (Rank Correlation):** Spearman ρ = 1.0000 vs. Spider Dev (target: ρ ≥ 0.88) → **PASSED**
+     - **Gate 3 (Diagnostic Resolution):** 100.0% attribution, 100.0% hallucination reduction (10 → 0 misses) → **PASSED**
+     - **Gate 4 (Mutation Sensitivity):** 100.0% bug detection rate, 0.0% escape rate across dual fixtures → **PASSED**
+     - **Official Verdict:** `MVE ADJUDICATION DECISION: GO`
 
 5. **Quickstart Code Examples**:
    - High-level pipeline execution via `ask_the_database.inference.pipeline.TextToSQLPipeline`.
@@ -152,7 +152,7 @@ The generated Model Card (`MODEL_README.md`) provides a complete, production-gra
 
 6. **Safety Sandbox & Guardrails**:
    - Read-only SQLite sandbox isolation.
-   - Execution timeout protection ($< 2.0\text{ s}$).
+   - Execution timeout protection (< 2.0 s).
    - Query plan inspection (`EXPLAIN QUERY PLAN`) blocking Cartesian fanouts (`SCAN TABLE ... WITHOUT INDEX`).
 
 ---
@@ -164,7 +164,7 @@ The generated Dataset Card (`DATASET_README.md`) structures the multi-turn train
 1. **YAML Frontmatter Configuration**:
    - Configures distinct subsets:
      - `spider`: Standard Spider SQL benchmark (`train`: 7,000 samples, `validation`: 1,034 samples).
-     - `reviewed_trajectories`: 500+ curated multi-turn trajectories with procedural exploration thoughts and tool calls reviewed by $K_{\text{SQL}}$ rules.
+     - `reviewed_trajectories`: 500+ curated multi-turn trajectories with procedural exploration thoughts and tool calls reviewed by K_SQL rules.
      - `filtered_rollouts`: Rollouts from student models passing verifiable test-suite execution rewards.
 
 2. **Schema & Feature Type Definitions**:
@@ -224,3 +224,16 @@ pytest tests/unit/test_release_to_hf.py -v
 ruff check scripts/release_to_hf.py
 mypy scripts/release_to_hf.py
 ```
+
+---
+
+## 6. Markdown Formatting Best Practices & Hub Portability
+
+For maximum readability and rendering reliability across GitHub, the Hugging Face Hub, and plain-text editors, the generators follow official Hugging Face documentation standards ([Hugging Face Model Cards](https://huggingface.co/docs/hub/main/en/model-cards) and [Dataset Cards](https://huggingface.co/docs/hub/main/en/datasets-cards)):
+
+1. **Prefer Plain Markdown with Unicode Symbols Over Fragmented LaTeX**:
+   - Symbols such as `→`, `≤`, `≥`, `ρ`, `<`, and `>` render cleanly and natively in all browsers, terminals, and markdown viewers.
+   - Raw LaTeX commands like `\to`, `\rightarrow`, and `\text{...}` outside math blocks are not recognized Markdown and appear literally as raw text.
+2. **Hugging Face Hub Math Delimiters**:
+   - When genuine mathematical formulations are required, Hugging Face Hub uses KaTeX and specifies `\(...\)` for inline math, and `$$...$$` or `\[...\]` for display math. Single dollar signs (`$10 \to 0$`) are not documented inline delimiters and often render literally on the Hub.
+

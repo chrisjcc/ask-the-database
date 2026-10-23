@@ -163,7 +163,7 @@ This dataset repository powers the training and empirical evaluation of **AskThe
 ## Configurations & Subsets
 
 ### 1. `reviewed_trajectories` (Harness-Zero Distillation)
-High-quality multi-turn trajectories curated and verified by $K_{{\\text{{SQL}}}}$ procedural rules:
+High-quality multi-turn trajectories curated and verified by K_SQL procedural rules:
 - **Tools executed**: `inspect_schema`, `sample_data`, `execute_sql`.
 - **Target**: Teaches models to actively inspect table schemas and categorical distinct values before committing to final queries, eliminating schema hallucinations.
 
@@ -306,11 +306,12 @@ The model is trained to interleave reasoning thoughts with procedural tool calls
 
 ### 2. Pre-Registered Zero-Budget MVE Decision Gates (Live Cluster Telemetry)
 The model was verified against the project's pre-registered Zero-Budget Evaluation Harness decision gates:
-- **Gate 1 (Latency Budget):** **$0.1268\\text{{ s}}$ ($126.80\\text{{ ms}}$)** across 5 passes (Target: $\\le 3.0\\text{{ s}}$) $\\rightarrow$ **PASSED**.
-- **Gate 2 (Rank Correlation):** **Spearman $\\rho = 1.0000$** vs Spider Dev (Target: $\\rho \\ge 0.88$) $\\rightarrow$ **PASSED**.
-- **Gate 3 (Diagnostic Resolution):** **$100.0\\%$ Attribution**, **$100.0\\%$ Hallucination Reduction** ($10 \\to 0$ misses) $\\rightarrow$ **PASSED**.
-- **Gate 4 (Mutation Sensitivity):** **$100.0\\%$ Bug Detection Rate**, **$0.0\\%$ Escape Rate** on dual fixtures $\\rightarrow$ **PASSED**.
-- **Official Verdict:** **`MVE ADJUDICATION DECISION: GO`**
+- **Gate 1 (Latency Budget):** 0.1268 s (126.80 ms) across 5 passes (target: ≤ 3.0 s) → **PASSED**
+- **Gate 2 (Rank Correlation):** Spearman ρ = 1.0000 vs. Spider Dev (target: ρ ≥ 0.88) → **PASSED**
+- **Gate 3 (Diagnostic Resolution):** 100.0% attribution, 100.0% hallucination reduction (10 → 0 misses) → **PASSED**
+- **Gate 4 (Mutation Sensitivity):** 100.0% bug detection rate, 0.0% escape rate across dual fixtures → **PASSED**
+
+**Official Verdict:** `MVE ADJUDICATION DECISION: GO`
 
 ---
 
@@ -351,7 +352,7 @@ print(tokenizer.decode(outputs[0], skip_special_tokens=True))
 
 ## Intended Use & Safety Sandbox
 - **Target Use:** Translating complex business and analytical natural language questions into accurate, executable SQLite queries.
-- **Sandboxing Guardrails:** All candidate queries run inside an isolated sandbox with query execution timeouts ($< 2.0\\text{{ s}}$) and query plan inspection (`EXPLAIN QUERY PLAN`) to flag and reject unconstrained Cartesian joins (`SCAN TABLE ... WITHOUT INDEX`).
+- **Sandboxing Guardrails:** All candidate queries run inside an isolated sandbox with query execution timeouts (< 2.0 s) and query plan inspection (`EXPLAIN QUERY PLAN`) to flag and reject unconstrained Cartesian joins (`SCAN TABLE ... WITHOUT INDEX`).
 """
 
 
