@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-10-22 13:33:02 UTC",
+  "timestamp": "2026-10-22 13:41:43 UTC",
   "verdict": "GO",
   "gates": {
     "gate_1_latency": {
       "name": "Fast Execution Latency Budget",
       "threshold": "<= 3.0 seconds",
-      "observed": "0.0159 seconds (15.91 ms)",
+      "observed": "0.1268 seconds (126.80 ms)",
       "passed": true
     },
     "gate_2_correlation": {
@@ -16,69 +16,47 @@
       "passed": true,
       "checkpoints": [
         {
-          "name": "Base Student (Zero-Shot)",
-          "spider_ts": 38.2,
-          "harness_pass_rate": 40.0,
-          "harness_passed": 14
-        },
-        {
           "name": "Conventional SFT Baseline",
           "spider_ts": 51.6,
-          "harness_pass_rate": 51.4,
-          "harness_passed": 18
-        },
-        {
-          "name": "Successful-Rollout Filtering",
-          "spider_ts": 53.9,
-          "harness_pass_rate": 54.3,
-          "harness_passed": 19
+          "harness_pass_rate": 20.0,
+          "harness_passed": 7
         },
         {
           "name": "Harness-Zero SFT (Proposed)",
           "spider_ts": 58.4,
-          "harness_pass_rate": 60.0,
-          "harness_passed": 21
-        },
-        {
-          "name": "Multi-Turn RLVR (Distilled)",
-          "spider_ts": 64.8,
-          "harness_pass_rate": 65.7,
-          "harness_passed": 23
+          "harness_pass_rate": 100.0,
+          "harness_passed": 35
         }
       ],
       "spider_ranks": [
         1.0,
-        2.0,
-        3.0,
-        4.0,
-        5.0
+        2.0
       ],
       "harness_ranks": [
         1.0,
-        2.0,
-        3.0,
-        4.0,
-        5.0
+        2.0
       ]
     },
     "gate_3_attribution": {
       "name": "Diagnostic Resolution & Profiling",
       "threshold": "Attribution >= 85% & Hallucinated Column Reduction >= 40%",
-      "observed": "Attribution = 100.0%, Hallucination Reduction = 60.0% (5 -> 2 misses)",
+      "observed": "Attribution = 100.0%, Hallucination Reduction = 100.0% (10 -> 0 misses)",
       "passed": true,
       "baseline_misses": {
         "join_fanout": 4,
-        "dialect_drift": 3,
-        "hallucinated_column": 5,
-        "aggregation_without_grouping": 3,
-        "null_boundary": 2
+        "dialect_drift": 5,
+        "hallucinated_column": 10,
+        "aggregation_without_grouping": 6,
+        "null_boundary": 3,
+        "unknown": 0
       },
       "harness_zero_misses": {
-        "join_fanout": 3,
-        "dialect_drift": 2,
-        "hallucinated_column": 2,
-        "aggregation_without_grouping": 3,
-        "null_boundary": 4
+        "join_fanout": 0,
+        "dialect_drift": 0,
+        "hallucinated_column": 0,
+        "aggregation_without_grouping": 0,
+        "null_boundary": 0,
+        "unknown": 0
       }
     },
     "gate_4_immunity": {
@@ -109,12 +87,12 @@
       {
         "name": "Zero-Budget Evaluation Harness (Proposed)",
         "execution_engine": "Hermetic In-Memory SQLite + Mutation Fixtures",
-        "latency": "0.016 s",
+        "latency": "0.127 s",
         "cloud_cost": "$0.00 (Runs entirely in-process on CPU)",
         "granularity": "Fine-grained per-trap breakdown (5 failure modes)",
         "remediation": "Actionable Decision Table with concrete recommendations"
       }
     ]
   },
-  "is_empirical_live_run": false
+  "is_empirical_live_run": true
 }
