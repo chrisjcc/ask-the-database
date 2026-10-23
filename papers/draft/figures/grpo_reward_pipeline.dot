@@ -1,0 +1,29 @@
+digraph G {
+    rankdir=TB;
+    fontsize=12;
+    nodesep=0.5;
+    ranksep=0.6;
+
+    node [shape=box, style="rounded", fontsize=11];
+
+    engine [label="Reward Execution Engine"];
+
+    format [label="Format Check: R_format(y)\nRegex / JSON schema validation"];
+    routing [label="Routing Check: R_routing\nAction vs ground-truth annotation"];
+    facet [label="Facet Validation: R_facet\nClarify / parameter matching"];
+    length [label="Length Penalty: R_len\nDynamic verbosity penalty"];
+
+    fail [shape=box, style="rounded,filled", fillcolor="#ffe6e6",
+          label="Terminate Early\n-1.0 reward"];
+
+    engine -> format;
+
+    format -> routing [label="pass"];
+    format -> fail [label="fail"];
+
+    routing -> facet [label="pass"];
+    routing -> fail [label="fail"];
+
+    facet -> length [label="pass"];
+    facet -> fail [label="fail"];
+}
