@@ -252,17 +252,33 @@ streamlit run app/streamlit_app.py
 
 ## 6. Hugging Face Release & Card Generation
 
-Generate verified, production-ready Model Cards (`MODEL_README.md`) and Dataset Cards (`DATASET_README.md`) incorporating Spider benchmark accuracy and Zero-Budget MVE decision gate verdicts:
+The repository provides automated tooling to generate and publish Model Cards (`MODEL_README.md`) and Dataset Cards (`DATASET_README.md`) incorporating Spider benchmark metrics and Zero-Budget MVE decision gate results.
+
+### 6.1 Local Offline Inspection (`make generate-hf-cards`)
+```bash
+make generate-hf-cards
+```
+- **Invokes:** `python3 scripts/release_to_hf.py --card-only`
+- **Output:** Writes markdown cards locally to `results/cards/DATASET_README.md` and `results/cards/MODEL_README.md`.
+- **Purpose:** Allows offline review and verification of metadata, benchmark tables, and tool usage examples before publishing to remote repositories.
+
+### 6.2 Remote Hub Publication (`make publish-hf-cards`)
+Deploy the generated cards directly to Hugging Face Hub:
+- **Model Card:** [https://huggingface.co/chrisjcc/ask-the-database](https://huggingface.co/chrisjcc/ask-the-database)
+- **Dataset Card:** [https://huggingface.co/datasets/chrisjcc/ask-the-database](https://huggingface.co/datasets/chrisjcc/ask-the-database)
 
 ```bash
-# Generate both cards locally into results/cards/
-make generate-hf-cards
+# Publish via make with target repositories
+make publish-hf-cards ARGS="--model-repo chrisjcc/ask-the-database --dataset-repo chrisjcc/ask-the-database"
 
-# Generate custom model card (e.g. Multi-Turn RLVR Agent)
-python3 scripts/release_to_hf.py --card-only --card-type model --model-variant rlvr_skyrl
+# Or directly via Python CLI
+python3 scripts/release_to_hf.py --publish-cards \
+  --model-repo chrisjcc/ask-the-database \
+  --dataset-repo chrisjcc/ask-the-database
 ```
+*Note: Requires `HF_TOKEN` with write permissions in your environment or `.env` file.*
 
-For full details, see the dedicated operational manual: [`docs/huggingface_card_generation_guide.md`](huggingface_card_generation_guide.md).
+For full details and CLI flag references, see [`docs/huggingface_card_generation_guide.md`](huggingface_card_generation_guide.md).
 
 ---
 
@@ -276,7 +292,8 @@ For full details, see the dedicated operational manual: [`docs/huggingface_card_
 | `make smoke-eval` | Runs fast in-process zero-budget smoke check (< 3.0s) | Sub-second regression check |
 | `make evaluate-zero-budget-mve` | Adjudicates 4-gate Zero-Budget MVE decision gates | `results/zero_budget_mve_summary.json` |
 | `make setup-hooks` | Installs native local git pre-commit hook (< 0.2s) | `.git/hooks/pre-commit` |
-| `make generate-hf-cards` | Generates Hugging Face Model & Dataset README cards | `results/cards/*.md` |
+| `make generate-hf-cards` | Generates local Hugging Face README cards | `results/cards/*.md` |
+| `make publish-hf-cards` | Publishes README cards to Hugging Face Hub | Remote Hub repositories |
 | `make preprocess` | Downloads and tokenizes Spider datasets | `data/processed/train.jsonl` |
 | `make train-sft` | Trains Conventional SFT Baseline | `models/sft/checkpoint-final` |
 | `make collect-distillation` | Collects K_SQL reviewed trajectories | `data/distillation/reviewed_trajectories.jsonl` |

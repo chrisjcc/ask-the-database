@@ -207,15 +207,21 @@ cat slurm/logs/demo_<job_id>.log
 ```
 
 ### 📦 Hugging Face Model & Dataset Card Generation
-Generate production-ready Hugging Face Model Cards (`MODEL_README.md`) and Dataset Cards (`DATASET_README.md`) with embedded benchmark metrics and live Zero-Budget MVE decision gate results:
+The repository provides automated tools to generate and publish Hugging Face Model Cards (`MODEL_README.md`) and Dataset Cards (`DATASET_README.md`) with embedded Spider benchmark metrics and Zero-Budget MVE decision gate results:
+
 ```bash
-# Generate both cards locally into results/cards/
+# 1. Local Offline Generation (inspect without remote credentials):
 make generate-hf-cards
 
-# Or invoke the CLI generator for a specific model variant
-python scripts/release_to_hf.py --card-only --card-type model --model-variant harness_zero
+# 2. Publish to Hugging Face Hub (requires HF_TOKEN):
+make publish-hf-cards ARGS="--model-repo chrisjcc/ask-the-database --dataset-repo chrisjcc/ask-the-database"
+
+# Or invoke the CLI generator directly:
+python scripts/release_to_hf.py --publish-cards \
+  --model-repo chrisjcc/ask-the-database \
+  --dataset-repo chrisjcc/ask-the-database
 ```
-For complete flag references and Hub deployment guides, see [Hugging Face Card Generation Guide](docs/huggingface_card_generation_guide.md).
+For complete flag references, metadata schemas, and operational instructions, see the **[Hugging Face Card Generation Guide](docs/huggingface_card_generation_guide.md)**.
 
 ---
 

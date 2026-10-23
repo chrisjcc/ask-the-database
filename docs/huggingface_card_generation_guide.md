@@ -18,26 +18,52 @@ When publishing fine-tuned models and datasets to the Hugging Face Hub, high-qua
 
 ## 2. Quickstart Operational Commands
 
-### 2.1 One-Click Operations via Make
+### 2.1 One-Click Operations via Make: Local Inspection vs. Hub Publication
 
-**Local Generation (Offline, No Credentials Required):**
-Generate both the Model Card and Dataset Card into `results/cards/`:
+The repository provides two distinct operations: **Local Offline Generation** (for inspection without credentials) and **Remote Hub Publication** (for deploying live to Hugging Face).
+
+#### A. Local Offline Card Generation (`make generate-hf-cards`)
+
 ```bash
 make generate-hf-cards
 ```
-Outputs generated:
-- `results/cards/DATASET_README.md`
-- `results/cards/MODEL_README.md`
 
-**Publish to Hugging Face Hub (Requires `HF_TOKEN`):**
-Upload the generated cards directly to your Hugging Face repositories:
+Under the hood, this invokes:
 ```bash
-# Publish to default repos (chrisjcc/ask-the-database-coder-7b and trajectories)
-make publish-hf-cards
+python3 scripts/release_to_hf.py --card-only
+```
 
-# Publish to custom repos (e.g. chrisjcc/ask-the-database)
+- **Execution Mode:** The `--card-only` flag runs in an entirely local, offline generation mode. No network calls or API credentials are required.
+- **Artifacts Written to Disk:**
+  - `results/cards/DATASET_README.md`
+  - `results/cards/MODEL_README.md`
+- **Architectural Rationale:** This design allows developers and researchers to inspect, review, and diff the generated cards before publishing, preventing accidental overwrites or deployment failures when credentials are not configured.
+
+---
+
+#### B. Publish Cards Directly to Hugging Face Repositories (`make publish-hf-cards`)
+
+To publish the generated documentation cards directly to your public or private Hugging Face repositories:
+- **Model Card Destination:** [https://huggingface.co/chrisjcc/ask-the-database](https://huggingface.co/chrisjcc/ask-the-database)
+- **Dataset Card Destination:** [https://huggingface.co/datasets/chrisjcc/ask-the-database](https://huggingface.co/datasets/chrisjcc/ask-the-database)
+
+**Run the publication command via `make`:**
+```bash
 make publish-hf-cards ARGS="--model-repo chrisjcc/ask-the-database --dataset-repo chrisjcc/ask-the-database"
 ```
+
+**Or directly via Python:**
+```bash
+python3 scripts/release_to_hf.py --publish-cards \
+  --model-repo chrisjcc/ask-the-database \
+  --dataset-repo chrisjcc/ask-the-database
+```
+
+**What the publication script executes automatically:**
+1. **Authenticates:** Connects to the Hugging Face Hub using your `HF_TOKEN` environment variable.
+2. **Auto-Creates Repositories:** Calls `api.create_repo(..., exist_ok=True)` to create the model and dataset repositories if they do not already exist on your Hugging Face account.
+3. **Ingests Live Telemetry:** Automatically ingests Spider Dev benchmark metrics from `results/evaluation_summary.json` and verified decision gates from the Zero-Budget MVE.
+4. **Deploys Documentation Cards:** Uploads `README.md` to both [`chrisjcc/ask-the-database`](https://huggingface.co/chrisjcc/ask-the-database) and [`datasets/chrisjcc/ask-the-database`](https://huggingface.co/datasets/chrisjcc/ask-the-database).
 
 ---
 
