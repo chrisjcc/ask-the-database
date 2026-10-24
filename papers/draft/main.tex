@@ -228,13 +228,17 @@ To select the optimal candidate from $N$ samples without incurring quadratic $\m
 \subsection{The Compound Architecture: Harness-Zero + Verifier}
 A verifier is fundamentally a \textbf{re-ranker and selector}; it cannot synthesize missing SQL syntax or recover missing columns from an ungrounded prompt. If the candidate generation pool consists of flawed queries, the verifier is forced to select the ``least bad'' failure.
 
-This insight establishes the foundation for our \textbf{Compound Architecture}:
+\paragraph{What Harness-Zero Brings That Verification Cannot Replicate.}
+Harness-Zero internalizes proactive catalog exploration directly into the model's neural weights: before emitting a query, Harness-Zero autonomously inspects table DDLs (\texttt{inspect\_schema}) and checks sample data values (\texttt{sample\_data}). Its candidate generation is grounded from turn~1. In a single greedy pass (costing only $350\,\text{ms}$ and $1.0\times$ compute), pure Harness-Zero achieves \textbf{58.4\% Test-Suite accuracy}, beating the Standalone Verifier on accuracy (+2.2\,pp), latency ($3.2\times$ faster), and token consumption ($5.8\times$ cheaper).
+
+\paragraph{Compounding Synergy in the Compound Regime.}
+However, once Harness-Zero improves the model's structural competence, adding the LLM-as-a-Verifier provides compounding value:
 \begin{itemize}[leftmargin=*,itemsep=2pt]
-    \item \textbf{Harness-Zero's Inductive Role}: Guarantees that the candidate generation pool is physically grounded in the database schema. Because Harness-Zero internalizes catalog inspection (\texttt{inspect\_schema}), all $K=5$ generated candidates navigate valid tables, correct foreign keys, and existing column attributes.
+    \item \textbf{Harness-Zero's Inductive Role}: Guarantees that the candidate generation pool is physically grounded in the database schema. Because Harness-Zero internalizes catalog exploration (\texttt{inspect\_schema} and \texttt{sample\_data}), all $K=5$ generated candidates navigate valid tables, correct foreign keys, and existing column attributes.
     \item \textbf{The Verifier's Inductive Role}: Operating over this high-quality, grounded candidate pool, the verifier exercises its core strength: breaking subtle ties in \texttt{WHERE} clause filter boundaries, aggregate granularity (\texttt{COUNT} vs.\ \texttt{SUM}), and three-valued logic edge cases.
 \end{itemize}
 
-As established in Section~\ref{sec:experiments}, this compound synergy yields an additive \textbf{+3.4\,pp boost} over Harness-Zero alone, reaching \textbf{61.8\% Test-Suite accuracy} on Spider Dev.
+As established in Section~\ref{sec:experiments}, this compound synergy yields an additive \textbf{+3.4\,pp boost} over pure Harness-Zero (and \textbf{+10.2\,pp} over baseline SFT), reaching a state-of-the-art \textbf{61.8\% Test-Suite accuracy} on Spider Dev, with the trade-off of increased inference latency ($1{,}180\,\text{ms}$, $5.9\times$ compute).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Zero-Budget Evaluation Micro-Harness}
@@ -439,6 +443,9 @@ When candidate rollouts are sampled from an ungrounded generator (the convention
     \item The verifier is placed in an intractable dilemma: evaluating five invalid queries and selecting the ``least bad'' failure.
     \item Consequently, Standalone Best-of-5 verification reaches only \textbf{56.2\% Test-Suite accuracy} on Spider Dev, while consuming $5.8\times$ more tokens and taking $1{,}120\,\text{ms}$ of inference latency.
 \end{itemize}
+
+\paragraph{What Harness-Zero Brings That Verification Cannot Replicate.}
+In sharp contrast, Harness-Zero internalizes proactive catalog exploration directly into the model's neural weights: before emitting a candidate query, Harness-Zero autonomously inspects table DDLs (\texttt{inspect\_schema}) and checks sample values (\texttt{sample\_data}). Its candidate generation is grounded from turn~1. In a single greedy pass (costing only $350\,\text{ms}$ and $1.0\times$ compute), pure Harness-Zero achieves \textbf{58.4\% Test-Suite accuracy}, beating the Standalone Verifier on accuracy (+2.2\,pp), latency ($3.2\times$ faster), and token consumption ($5.8\times$ cheaper).
 
 \subsection{Pre-Registered Decision Gate Adjudication}
 To prevent confirmation bias, we evaluated five pre-registered decision gates for standalone verification (Table~\ref{tab:verifier_adjudication}).
