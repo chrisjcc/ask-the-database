@@ -16,8 +16,13 @@ RUFF := $(if $(wildcard $(VENV)/bin/ruff),$(VENV)/bin/ruff,ruff)
 MYPY := $(if $(wildcard $(VENV)/bin/mypy),$(VENV)/bin/mypy,mypy)
 PYTEST := $(if $(wildcard $(VENV)/bin/pytest),$(VENV)/bin/pytest,pytest)
 DVC := $(if $(wildcard $(VENV)/bin/dvc),$(VENV)/bin/dvc,dvc)
+STREAMLIT := $(if $(wildcard $(VENV)/bin/streamlit),$(VENV)/bin/streamlit,streamlit)
 
-.PHONY: help install install-dev lint format test preprocess train-sft train-filtered train-grpo collect-distillation train-harness-zero evaluate evaluate-mve compare-rlvr smoke-eval evaluate-zero-budget-mve setup-hooks generate-hf-cards publish-hf-cards
+APP_IMAGE ?= ask-the-database-app
+MODEL_REPO ?= chrisjcc/ask-the-database
+DATASET_REPO ?= chrisjcc/ask-the-database
+
+.PHONY: help install install-dev lint format test preprocess train-sft train-filtered train-grpo collect-distillation train-harness-zero evaluate evaluate-mve compare-rlvr smoke-eval evaluate-zero-budget-mve setup-hooks generate-hf-cards publish-hf-cards publish-hf-release docker-build docker-run run-app
 
 help:
 	@echo "AskTheDatabase - Operational Commands:"
@@ -40,6 +45,10 @@ help:
 	@echo "  make compare-rlvr         Compare sample efficiency & asymptotic accuracy (Run A vs Run B)"
 	@echo "  make generate-hf-cards    Generate Hugging Face Model & Dataset README cards"
 	@echo "  make publish-hf-cards     Publish Model & Dataset README cards to Hugging Face Hub"
+	@echo "  make publish-hf-release   Deploy verified model cards & datasets to Hugging Face"
+	@echo "  make run-app              Run local interactive Streamlit demo app"
+	@echo "  make docker-build         Build Streamlit Docker container image"
+	@echo "  make docker-run           Run AskTheDatabase interactive demo in Docker"
 
 install:
 	$(PIP) install --upgrade pip
@@ -106,4 +115,39 @@ generate-hf-cards:
 
 publish-hf-cards:
 	$(PYTHON) scripts/release_to_hf.py --publish-cards $(ARGS)
+
+publish-hf-release:
+	@echo "=========================================================="
+	@echo "🚀 Deploying verified production model & cards to Hugging Face"
+	@echo "➔ Dataset: https://huggingface.co/datasets/$(DATASET_REPO)"
+	@echo "➔ Model:   https://huggingface.co/$(MODEL_REPO)"
+	@echo "=========================================================="
+	@test -n "$$HF_TOKEN" || ( \
+		echo "ERROR: HF_TOKEN environment variable is not set."; \
+		echo "Export HF_TOKEN=<your-token> or add it to .env"; \
+		exit 1; \
+	)
+	@RELEASE_TAG=$$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0") && \
+	echo "Detected release tag: $$RELEASE_TAG" && \
+	$(PYTHON) scripts/release_to_hf.py --publish-cards \
+		--model-repo $(MODEL_REPO) \
+		--dataset-repo $(DATASET_REPO) \
+		--release-tag "$$RELEASE_TAG" $(ARGS)
+	@echo "=========================================================="
+	@echo "✅ Hugging Face deployment complete."
+	@echo "=========================================================="
+
+# ------------------------------------------------------------
+# App & Docker
+# ------------------------------------------------------------
+
+docker-build:
+	docker build -t $(APP_IMAGE) .
+
+docker-run:
+	docker run -p 8501:8501 --env-file .env $(APP_IMAGE)
+
+run-app:
+	$(STREAMLIT) run app/app.py $(ARGS)
+
 
