@@ -1,0 +1,149 @@
+{
+  "timestamp": "2026-10-21 14:22:16 UTC",
+  "verdict": "NO-GO",
+  "standalone_verdict": "NO-GO",
+  "compound_verdict": "GO",
+  "summary": "The LLM-as-a-Verifier Minimum Viable Experiment achieved an overall adjudication verdict of **NO-GO** for replacing Harness-Zero as the default pipeline on `main`. Standalone Best-of-5 tournament selection atop the baseline SFT model (Condition 3) achieved 56.2% Test-Suite Correctness, delivering a +4.6 pp gain over Conventional SFT (Condition 1: 51.6%), but failing the pre-registered Gate 1 (+5.0 pp) and the crucial Harness-Zero Dominance Gate 2 (Condition 2 achieves 58.4% TS with zero runtime overhead). However, the Compound Architecture (Condition 3b: Harness-Zero + Best-of-5 Verifier) achieved 61.8% TS (+3.4 pp over pure Harness-Zero), passing Gate 2b and confirming that procedural pre-grounding and test-time verification provide complementary orthogonal gains.",
+  "recommendation": "### Branch Merging Decision:\n- **Do NOT merge `feat/llm-as-a-verifier-mve` into `main` as a replacement for Harness-Zero.** Harness-Zero remains the authoritative, highly efficient, zero-overhead foundation for AskTheDatabase on `main`.\n- **Retain `SQLVerifier` and `VerifierSelector` as an optional test-time scaling add-on** configured for high-accuracy batch evaluation or compound deployments where $5.9\\times$ compute overhead and ~1.2s latency are acceptable.",
+  "conditions": [
+    {
+      "condition_id": 1,
+      "name": "Baseline (Conventional SFT)",
+      "split": "spider_dev",
+      "test_suite_correctness": 51.6,
+      "execution_accuracy": 57.3,
+      "valid_sql": 94.8,
+      "median_latency_ms": 310.0,
+      "token_cost_multiplier": 1.0,
+      "majority_vote_agreement": null,
+      "candidate_count": 1
+    },
+    {
+      "condition_id": 2,
+      "name": "Harness-Zero (Internalized)",
+      "split": "spider_dev",
+      "test_suite_correctness": 58.4,
+      "execution_accuracy": 64.2,
+      "valid_sql": 97.1,
+      "median_latency_ms": 350.0,
+      "token_cost_multiplier": 1.0,
+      "majority_vote_agreement": null,
+      "candidate_count": 1
+    },
+    {
+      "condition_id": 3,
+      "name": "LLM-as-a-Verifier (Standalone Best-of-5)",
+      "split": "spider_dev",
+      "test_suite_correctness": 56.2,
+      "execution_accuracy": 62.0,
+      "valid_sql": 98.6,
+      "median_latency_ms": 1120.0,
+      "token_cost_multiplier": 5.8,
+      "majority_vote_agreement": 83.4,
+      "candidate_count": 5
+    },
+    {
+      "condition_id": 4,
+      "name": "Harness-Zero + Verifier (Compound Best-of-5)",
+      "split": "spider_dev",
+      "test_suite_correctness": 61.8,
+      "execution_accuracy": 67.5,
+      "valid_sql": 99.2,
+      "median_latency_ms": 1180.0,
+      "token_cost_multiplier": 5.9,
+      "majority_vote_agreement": 87.2,
+      "candidate_count": 5
+    },
+    {
+      "condition_id": 1,
+      "name": "Baseline (Conventional SFT)",
+      "split": "spider_realistic",
+      "test_suite_correctness": 42.1,
+      "execution_accuracy": 47.5,
+      "valid_sql": 91.0,
+      "median_latency_ms": 325.0,
+      "token_cost_multiplier": 1.0,
+      "majority_vote_agreement": null,
+      "candidate_count": 1
+    },
+    {
+      "condition_id": 2,
+      "name": "Harness-Zero (Internalized)",
+      "split": "spider_realistic",
+      "test_suite_correctness": 51.2,
+      "execution_accuracy": 56.8,
+      "valid_sql": 95.8,
+      "median_latency_ms": 365.0,
+      "token_cost_multiplier": 1.0,
+      "majority_vote_agreement": null,
+      "candidate_count": 1
+    },
+    {
+      "condition_id": 3,
+      "name": "LLM-as-a-Verifier (Standalone Best-of-5)",
+      "split": "spider_realistic",
+      "test_suite_correctness": 48.0,
+      "execution_accuracy": 53.6,
+      "valid_sql": 97.4,
+      "median_latency_ms": 1145.0,
+      "token_cost_multiplier": 5.8,
+      "majority_vote_agreement": 81.0,
+      "candidate_count": 5
+    },
+    {
+      "condition_id": 4,
+      "name": "Harness-Zero + Verifier (Compound Best-of-5)",
+      "split": "spider_realistic",
+      "test_suite_correctness": 54.9,
+      "execution_accuracy": 60.4,
+      "valid_sql": 98.5,
+      "median_latency_ms": 1210.0,
+      "token_cost_multiplier": 5.9,
+      "majority_vote_agreement": 85.6,
+      "candidate_count": 5
+    }
+  ],
+  "gates": [
+    {
+      "gate_name": "Gate 1: Absolute Gain over Baseline",
+      "status": "FAILED",
+      "threshold": "Delta TS >= +5.0 pp",
+      "achieved": "+4.60 pp (56.2% vs 51.6%)",
+      "margin": -0.4,
+      "description": "Verifier Best-of-5 selection must beat greedy baseline SFT by at least +5.0 pp."
+    },
+    {
+      "gate_name": "Gate 2: Harness-Zero Dominance Check",
+      "status": "FAILED",
+      "threshold": "TS >= 60.4% (Harness-Zero + 2.0 pp)",
+      "achieved": "56.2% (Harness-Zero achieves 58.4%)",
+      "margin": -2.2,
+      "description": "Standalone Verifier must beat Harness-Zero by +2.0 pp to justify +5.8x compute."
+    },
+    {
+      "gate_name": "Gate 2b: Compound Synergistic Margin",
+      "status": "PASSED",
+      "threshold": "TS >= 61.4% (Harness-Zero + 3.0 pp)",
+      "achieved": "61.8% (+3.4 pp gain)",
+      "margin": 0.4,
+      "description": "Compound Harness-Zero + Verifier must beat pure Harness-Zero by at least +3.0 pp."
+    },
+    {
+      "gate_name": "Gate 3: Inference Latency Budget",
+      "status": "PASSED",
+      "threshold": "Median Latency <= 1,200 ms",
+      "achieved": "1120 ms",
+      "margin": 80.0,
+      "description": "Tournament selection latency must stay within 1.2s interactive user response limit."
+    },
+    {
+      "gate_name": "Gate 4: Selection Calibration vs. Majority Voting",
+      "status": "PASSED",
+      "threshold": "Advantage >= +3.0 pp & Agreement >= 80.0%",
+      "achieved": "83.4% vs 79.8% MajVote (+3.6 pp)",
+      "margin": 0.6,
+      "description": "Verifier logit expectation must outperform execution-hash majority voting by >= +3.0 pp."
+    }
+  ],
+  "metadata": {}
+}

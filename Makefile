@@ -17,7 +17,7 @@ MYPY := $(if $(wildcard $(VENV)/bin/mypy),$(VENV)/bin/mypy,mypy)
 PYTEST := $(if $(wildcard $(VENV)/bin/pytest),$(VENV)/bin/pytest,pytest)
 DVC := $(if $(wildcard $(VENV)/bin/dvc),$(VENV)/bin/dvc,dvc)
 
-.PHONY: help install install-dev lint format test preprocess train-sft train-filtered train-grpo collect-distillation train-harness-zero evaluate evaluate-mve compare-rlvr smoke-eval evaluate-zero-budget-mve setup-hooks generate-hf-cards publish-hf-cards
+.PHONY: help install install-dev lint format test preprocess train-sft train-filtered train-grpo collect-distillation train-harness-zero evaluate evaluate-mve compare-rlvr evaluate-verifier-mve smoke-eval evaluate-zero-budget-mve setup-hooks generate-hf-cards publish-hf-cards
 
 help:
 	@echo "AskTheDatabase - Operational Commands:"
@@ -38,6 +38,7 @@ help:
 	@echo "  make evaluate             Evaluate benchmark suites (Spider, DK, Syn, Realistic)"
 	@echo "  make evaluate-mve         Adjudicate 4-condition MVE decision gates & publish report"
 	@echo "  make compare-rlvr         Compare sample efficiency & asymptotic accuracy (Run A vs Run B)"
+	@echo "  make evaluate-verifier-mve Adjudicate LLM-as-a-Verifier MVE decision gates & publish report"
 	@echo "  make generate-hf-cards    Generate Hugging Face Model & Dataset README cards"
 	@echo "  make publish-hf-cards     Publish Model & Dataset README cards to Hugging Face Hub"
 
@@ -88,6 +89,8 @@ evaluate-mve:
 compare-rlvr:
 	$(PYTHON) scripts/compare_rlvr_efficiency.py $(ARGS)
 
+evaluate-verifier-mve:
+	$(PYTHON) scripts/run_verifier_mve.py $(ARGS)
 smoke-eval:
 	$(PYTHON) scripts/run_smoke_eval.py $(ARGS)
 

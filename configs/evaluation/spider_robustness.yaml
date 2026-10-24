@@ -12,3 +12,6 @@ metrics:
   - ex
   - va
   - mrr
+use_verifier: false
+num_candidates: 5
+temperature: 0.7
