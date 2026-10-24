@@ -1,0 +1,39 @@
+# -----------------------------------------------------------------------------
+# SFT Sweep Configuration
+# -----------------------------------------------------------------------------
+# Weights & Biases Bayesian sweep configuration for SFT hyperparameter search.
+
+# --- Sweep Settings ---
+name: sft-bayes-hyperband
+description: >
+  Bayesian hyperparameter sweep for the train-sft pipeline.
+  Searches SFT learning rate and LoRA rank while minimizing eval/loss using
+  Hyperband early stopping.
+project: ask-the-database
+program: scripts/run_sweep_trial.py
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - "--stage"
+  - "train-sft"
+  - ${args}
+method: bayes
+metric:
+  name: eval/loss
+  goal: minimize
+
+# Enable Hyperband Early Stopping
+early_terminate:
+  type: hyperband
+  min_iter: 10
+  eta: 3
+
+# --- Parameters ---
+parameters:
+  learning_rate:
+    distribution: log_uniform_values
+    min: 0.000005
+    max: 0.0001
+  lora_r:
+    values: [8, 16, 32]

@@ -30,6 +30,7 @@ DATASET_REPO ?= chrisjcc/ask-the-database
         install install-dev lint format test setup-hooks \
         preprocess collect-distillation dvc-repro \
         train-sft train-filtered train-harness-zero train-grpo \
+        sweep \
         smoke-eval evaluate-zero-budget-mve evaluate evaluate-mve compare-rlvr \
         generate-hf-cards publish-hf-cards publish-hf-release \
         run-app docker-build docker-run
@@ -60,6 +61,9 @@ help:
 	@echo "  make train-filtered           Train SFT on successful rollouts via rejection sampling (Cond 3)"
 	@echo "  make train-harness-zero       Train SFT on K_SQL reviewed trajectories (Cond 4 - Proposed)"
 	@echo "  make train-grpo               Execute multi-turn GRPO / RLVR verifiable training (Cond 5)"
+	@echo ""
+	@echo "Hyperparameter Optimization (W&B Sweeps):"
+	@echo "  make sweep                    Launch W&B Bayesian hyperparameter sweep (FINE_TUNE_METHOD=<sft|grpo>)"
 	@echo ""
 	@echo "Evaluation & Decision Gates:"
 	@echo "  make smoke-eval               Execute fast in-process zero-budget smoke check (< 38ms)"
@@ -140,7 +144,70 @@ train-grpo:
 	$(PYTHON) scripts/train_rlvr.py training=rlvr_skyrl_agent $(ARGS)
 
 # ------------------------------------------------------------
-# 4. Evaluation & Decision Gates
+# 4. Hyperparameter Optimization (W&B Sweeps)
+# ------------------------------------------------------------
+
+FINE_TUNE_METHODS := sft grpo
+COUNT ?= 5
+
+sweep:
+	@if [ -z "$(FINE_TUNE_METHOD)" ]; then \
+		echo "ERROR: FINE_TUNE_METHOD is required."; \
+		echo "Usage: make sweep FINE_TUNE_METHOD=<sft|grpo> [COUNT=<n>]"; \
+		exit 1; \
+	fi
+	@if ! echo "$(FINE_TUNE_METHODS)" | grep -qw "$(FINE_TUNE_METHOD)"; then \
+		echo "ERROR: Unsupported fine-tuning method='$(FINE_TUNE_METHOD)'."; \
+		echo "Supported fine-tuning methods: $(FINE_TUNE_METHODS)"; \
+		exit 1; \
+	fi
+	@ENTITY=$${WANDB_ENTITY:-$(WANDB_ENTITY)}; \
+	if [ -z "$$ENTITY" ]; then \
+		echo "ERROR: WANDB_ENTITY is not set. Export WANDB_ENTITY or add to .env"; \
+		exit 1; \
+	fi; \
+	PROJECT=$${WANDB_PROJECT:-$(WANDB_PROJECT)}; \
+	if [ -z "$$PROJECT" ]; then \
+		echo "ERROR: WANDB_PROJECT is not set. Export WANDB_PROJECT or add to .env"; \
+		exit 1; \
+	fi; \
+	if [ ! -f "sweeps/$(FINE_TUNE_METHOD).yaml" ]; then \
+		echo "ERROR: Sweep configuration not found: sweeps/$(FINE_TUNE_METHOD).yaml"; \
+		exit 1; \
+	fi; \
+	echo "=========================================================="; \
+	echo "Initializing W&B Sweep"; \
+	echo "=========================================================="; \
+	echo "Fine-tune method: $(FINE_TUNE_METHOD)"; \
+	echo "Sweep config:     sweeps/$(FINE_TUNE_METHOD).yaml"; \
+	echo "Entity:           $$ENTITY"; \
+	echo "Project:          $$PROJECT"; \
+	echo "Trial count:      $(COUNT)"; \
+	echo "=========================================================="; \
+	OUTPUT=$$($(PYTHON) -m wandb sweep sweeps/$(FINE_TUNE_METHOD).yaml 2>&1) || { \
+		echo "$$OUTPUT"; \
+		echo "ERROR: Failed to create W&B sweep."; \
+		exit 1; \
+	}; \
+	echo "$$OUTPUT"; \
+	SWEEP_ID=$$(echo "$$OUTPUT" | grep -oE "ID: [a-zA-Z0-9]+" | awk '{print $$2}' | tail -1); \
+	if [ -z "$$SWEEP_ID" ]; then \
+		echo "ERROR: Failed to extract Sweep ID from wandb output."; \
+		exit 1; \
+	fi; \
+	echo "Parsed Sweep ID: $$SWEEP_ID"; \
+	echo "Starting W&B sweep agent..."; \
+	$(PYTHON) -m wandb agent $$ENTITY/$$PROJECT/$$SWEEP_ID --count $(COUNT) || { \
+		echo "ERROR: W&B sweep agent failed."; \
+		exit 1; \
+	}; \
+	echo "Generating sweep report..."; \
+	$(PYTHON) scripts/generate_sweep_report.py \
+		--fine-tune-method "$(FINE_TUNE_METHOD)" \
+		--sweep-id "$$SWEEP_ID"
+
+# ------------------------------------------------------------
+# 5. Evaluation & Decision Gates
 # ------------------------------------------------------------
 
 smoke-eval:
@@ -159,7 +226,7 @@ compare-rlvr:
 	$(PYTHON) scripts/compare_rlvr_efficiency.py $(ARGS)
 
 # ------------------------------------------------------------
-# 5. Deployment & Hugging Face Hub
+# 6. Deployment & Hugging Face Hub
 # ------------------------------------------------------------
 
 generate-hf-cards:
@@ -190,7 +257,7 @@ publish-hf-release:
 	@echo "=========================================================="
 
 # ------------------------------------------------------------
-# 6. Interactive Demo App & Docker
+# 7. Interactive Demo App & Docker
 # ------------------------------------------------------------
 
 run-app:

@@ -1,0 +1,41 @@
+# -----------------------------------------------------------------------------
+# GRPO Sweep Configuration
+# -----------------------------------------------------------------------------
+# Weights & Biases Bayesian sweep configuration for GRPO hyperparameter search.
+
+# --- Sweep Settings ---
+name: grpo-bayes-hyperband
+description: >
+  Bayesian hyperparameter sweep for the train-grpo pipeline.
+  Searches GRPO beta_kl and learning rate while maximizing reward/test_suite using
+  Hyperband early stopping.
+project: ask-the-database
+program: scripts/run_sweep_trial.py
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - "--stage"
+  - "train-grpo"
+  - ${args}
+method: bayes
+metric:
+  name: reward/test_suite
+  goal: maximize
+
+# Enable Hyperband Early Stopping
+early_terminate:
+  type: hyperband
+  min_iter: 10
+  eta: 3
+
+# --- Parameters ---
+parameters:
+  beta_kl:
+    distribution: uniform
+    min: 0.01
+    max: 0.10
+  learning_rate:
+    distribution: log_uniform_values
+    min: 5.0e-7
+    max: 1.0e-5
