@@ -172,9 +172,9 @@ class NL2SQLPipeline:
         tables = available_tables or ["demo_table"]
         target_table = tables[0]
 
-        if not assistant_msgs:
+        if not assistant_msgs and self.max_turns > 1:
             return f'<tool name="inspect_schema">["{target_table}"]</tool>'
-        if len(assistant_msgs) == 1:
+        if len(assistant_msgs) == 1 and self.max_turns > 2:
             return f'<tool name="sample_data">{target_table}</tool>'
 
         query = default_query or f"SELECT * FROM {target_table} LIMIT 5;"
@@ -212,7 +212,7 @@ class NL2SQLPipeline:
             completion = self.generate_step(
                 env.history,
                 available_tables=available_tables,
-                default_query=gold_sql,
+                default_query=None,
             )
             obs, step_reward, done, info = env.step(completion)
 
