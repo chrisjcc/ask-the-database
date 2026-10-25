@@ -146,6 +146,9 @@ Because Harness-Zero pre-fine-tuning elevates the model's schema pre-inspection 
 
 This guarantees divergent intra-group returns ($\operatorname{std}(R) > 0$), providing high-variance advantage estimates that eliminate the cold-start exploration plateau.
 
+![RLVR Sample Efficiency and Cold-Start Dynamics](../papers/draft/figures/rlvr_training_curve.png)
+*Figure 1: Empirical RLVR / GRPO training trajectories comparing conventional SFT warm-start against Harness-Zero pre-grounding. Conventional SFT suffers from vanishing policy gradients due to zero intra-group reward variance on unseen schemas, whereas Harness-Zero enables immediate, sample-efficient policy improvement.*
+
 ### The Hierarchical Multi-Tier Reward Rubric
 To prevent reward hacking, we implement a strict 4-tier verifiable reward rubric:
 
@@ -204,20 +207,8 @@ When we evaluated Standalone Verification against pure Harness-Zero on held-out 
 
 Because Harness-Zero is simultaneously **more accurate, 3.2× faster, and 5.8× cheaper**, Standalone Verification is **strictly Pareto-dominated**.
 
-```
-  Accuracy (TS %)
-      │
- 65%  │                                      ● Point D: Compound Architecture (61.8%)
-      │                                        [Harness-Zero + Verifier]
- 60%  │                  ● Point C: Harness-Zero (58.4%)
-      │                    [Pareto-Dominant Real-Time]
- 55%  │                                      ▲ Point B: Standalone Verifier (56.2%)
-      │                                        [Pareto-Dominated!]
- 50%  │   ● Point A: Baseline SFT (51.6%)
-      │
-      └─────────────────────────────────────────────────────────────► Compute Cost
-         1.0×                                5.9×
-```
+![Inference Pareto Frontier for Text-to-SQL Alignment](../papers/draft/figures/pareto_frontier.png)
+*Figure 2: The multi-objective trade-off between inference compute multiplier and Test-Suite accuracy. Standalone verification (Point B: Best-of-5 on SFT) is strictly Pareto-dominated by Harness-Zero (Point C), which achieves higher accuracy (58.4% vs. 56.2% TS) at 5.8× lower compute cost (350 ms vs. 1,120 ms). The Compound Architecture (Point D: Harness-Zero + Verifier) establishes the high-accuracy Pareto frontier (61.8% TS).*
 
 ### Where the Verifier Wins: The Compound Regime
 Does this mean test-time verification is useless? **No!**
