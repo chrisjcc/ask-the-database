@@ -1,27 +1,43 @@
-model_path: "models/sft/final"
-output_dir: "models/rlvr/final"
-learning_rate: 1.0e-6
-num_rollouts_per_prompt: 8
-max_turns: 5
-step_penalty: -0.05
-recovery_bonus: 0.3
-beta: 0.05
-max_steps: 250
-logging_steps: 5
-save_steps: 50
-report_to: "wandb"
-wandb:
-  enabled: true
-  project: "ask-the-database"
-dry_run: false
-temperature: 0.7
+# -----------------------------------------------------------------------------
+# Multi-Turn RLVR SkyRL Agent Configuration (AskTheDatabase)
+# -----------------------------------------------------------------------------
+# Configuration for multi-turn reinforcement learning with verifiable rewards (RLVR)
+# in the SkyRLSQLEnvironment (interactive schema inspection, execution, recovery).
 
+# --- Global & Paths ---
+model_path: "models/sft/final"             # Seed policy checkpoint (SFT baseline or Harness-Zero)
+output_dir: "models/rlvr/final"            # Directory to save trained policy checkpoints
+
+# --- Agent Rollouts & Interaction ---
+num_rollouts_per_prompt: 8                 # Number of parallel agent rollouts G per Spider question
+max_turns: 5                               # Maximum interactive turns per trajectory (budget B=5)
+temperature: 0.7                           # Sampling temperature for agent action generation
+dry_run: false                             # Fast validation mode for CI and debugging
+
+# --- RLVR Optimization & Rewards ---
+learning_rate: 1.0e-6                      # Policy initial learning rate
+beta: 0.05                                 # KL divergence penalty coefficient against reference policy
+step_penalty: -0.05                        # Per-turn efficiency penalty encouraging minimal trajectories
+recovery_bonus: 0.3                        # Bonus reward for successful recovery after runtime error
+
+# --- Steps & Checkpointing ---
+max_steps: 250                             # Maximum gradient steps
+logging_steps: 5                           # Frequency of telemetry logging to console and W&B
+save_steps: 50                             # Frequency of policy checkpoint saves
+
+# --- Tracking & Observability ---
+report_to: "wandb"                         # Metrics reporter integration ("wandb", "none")
+wandb:
+  enabled: true                            # Enable Weights & Biases telemetry
+  project: "ask-the-database"              # Target W&B project name
+
+# --- PEFT / LoRA Adapter ---
 lora:
-  r: 16
-  lora_alpha: 32
-  lora_dropout: 0.05
-  bias: "none"
-  target_modules:
+  r: 16                                    # LoRA rank dimension
+  lora_alpha: 32                           # LoRA scaling factor (alpha / r)
+  lora_dropout: 0.05                       # LoRA dropout probability
+  bias: "none"                             # Bias training mode ("none", "all", "lora_only")
+  target_modules:                          # Target projection layers for adapter injection
     - "q_proj"
     - "k_proj"
     - "v_proj"
