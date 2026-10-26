@@ -56,9 +56,8 @@ cd ask-the-database
 python3.11 -m venv .venv
 source .venv/bin/activate
 
-# 3. Install AskTheDatabase in editable mode with development and training dependencies
+# 3. Install AskTheDatabase in editable mode with development, training, and tracking dependencies (including wandb)
 make install
-pip install wandb  # Or install all optional dependencies: pip install -e ".[all]"
 
 # HPC Cluster Best Practice: Prevent user ~/.local site-packages from leaking into environment
 export PYTHONNOUSERSITE=1
@@ -115,19 +114,11 @@ make preprocess
 Train the base model on ground-truth static text-to-SQL demonstration pairs using LoRA ($r=16, \alpha=32$):
 
 ```bash
-# Via Makefile:
-make train-sft ARGS="model=qwen2_5_coder_1_5b"
+# Standard Makefile invocation (Condition 2: Conventional Baseline):
+make train-sft ARGS="model=qwen2_5_coder_1_5b training.dataset_path=data/processed/train.jsonl training.output_dir=models/mve/sft_baseline training.num_train_epochs=2 training.per_device_train_batch_size=4 training.gradient_accumulation_steps=2 training.learning_rate=2e-5"
 
-# Or via Direct CLI execution (Condition 2: Conventional Baseline):
-python3 scripts/train_sft.py \
-  model=qwen2_5_coder_1_5b \
-  training.dataset_path=data/processed/train.jsonl \
-  training.output_dir=models/mve/sft_baseline \
-  training.num_train_epochs=2 \
-  training.per_device_train_batch_size=4 \
-  training.gradient_accumulation_steps=2 \
-  training.learning_rate=2e-5 \
-  training.report_to=wandb 2>&1 | tee train_mve_sft_baseline.log
+# (Direct CLI equivalent for Slurm scripts):
+# python3 scripts/train_sft.py model=qwen2_5_coder_1_5b training.dataset_path=data/processed/train.jsonl training.output_dir=models/mve/sft_baseline training.num_train_epochs=2 training.per_device_train_batch_size=4 training.gradient_accumulation_steps=2 training.learning_rate=2e-5
 ```
 * **Resulting Checkpoint:** `models/mve/sft_baseline` (or custom `training.output_dir`)
 * **Data Format:** `data/processed/train.jsonl` consists of single-turn demonstration pairs where the user prompt contains the question and full database schema DDL, and the assistant responds directly with the target SQL.
@@ -148,49 +139,31 @@ Fine-tune the student policy on on-policy multi-turn rollouts reviewed and repai
 Collect balanced, difficulty-stratified teacher-reviewed trajectories (150 medium, 200 hard, 150 extra-hard):
 
 ```bash
-# Via Direct CLI (Recommended for full 500-sample balanced stratification):
-python3 scripts/collect_reviewed_trajectories.py \
-  --raw-spider data/raw/spider_data/train_spider.json \
-  --databases-dir data/databases \
-  --n-medium 150 \
-  --n-hard 200 \
-  --n-extra 150 \
-  --output data/distillation/reviewed_trajectories.jsonl \
-  --metrics-output data/distillation/collection_metrics.json
+# Standard Makefile invocation (Full 500-sample balanced stratification):
+make collect-distillation ARGS="--raw-spider data/raw/spider_data/train_spider.json --databases-dir data/databases --n-medium 150 --n-hard 200 --n-extra 150 --output data/distillation/reviewed_trajectories.jsonl --metrics-output data/distillation/collection_metrics.json"
 
-# Or fast dry-run smoke test (5 sample episodes to verify pipeline health):
+# Fast dry-run smoke test (5 sample episodes to verify pipeline health):
 make collect-distillation ARGS="--dry-run"
 ```
 
 * **Teacher Backend Options:**
   - **Deterministic Pure Rule Engine (Default — 100% Offline, Zero API Calls):**
     ```bash
-    python3 scripts/collect_reviewed_trajectories.py --teacher-backend rule
+    make collect-distillation ARGS="--teacher-backend rule"
     ```
   - **Optional: Google Gemini 2.0 Flash (External LLM Teacher via `GEMINI_API_KEY`):**
     ```bash
-    python3 scripts/collect_reviewed_trajectories.py \
-      --teacher-backend litellm \
-      --teacher-model gemini/gemini-2.0-flash
+    make collect-distillation ARGS="--teacher-backend litellm --teacher-model gemini/gemini-2.0-flash"
     ```
 
 #### Step 2: Fine-Tune on Reviewed Trajectories
 
 ```bash
-# Via Makefile:
-make train-harness-zero ARGS="model=qwen2_5_coder_1_5b training.output_dir=models/mve/harness_zero"
+# Standard Makefile invocation (Condition 4: Harness-Zero Distillation):
+make train-harness-zero ARGS="model=qwen2_5_coder_1_5b training.output_dir=models/mve/harness_zero training.num_train_epochs=2 training.per_device_train_batch_size=2 training.gradient_accumulation_steps=4 training.learning_rate=2e-4 training.max_seq_length=2048"
 
-# Or via Direct CLI (Condition 4: Harness-Zero Distillation):
-python3 scripts/train_sft.py \
-  model=qwen2_5_coder_1_5b \
-  training.dataset_path=data/distillation/reviewed_trajectories.jsonl \
-  training.output_dir=models/mve/harness_zero \
-  training.num_train_epochs=2 \
-  training.per_device_train_batch_size=2 \
-  training.gradient_accumulation_steps=4 \
-  training.learning_rate=2e-4 \
-  training.max_seq_length=2048 \
-  training.report_to=wandb 2>&1 | tee train_mve_harness_zero_reviewed_trajectories_500.log
+# (Direct CLI equivalent for Slurm scripts):
+# python3 scripts/train_sft.py model=qwen2_5_coder_1_5b training.dataset_path=data/distillation/reviewed_trajectories.jsonl training.output_dir=models/mve/harness_zero training.num_train_epochs=2 training.per_device_train_batch_size=2 training.gradient_accumulation_steps=4 training.learning_rate=2e-4 training.max_seq_length=2048
 ```
 * **Resulting Checkpoint:** `models/mve/harness_zero`
 
@@ -239,34 +212,19 @@ Evaluate checkpoints across standard Spider splits and robustness variants (`spi
 Evaluated with `max_turns=5` to permit interactive schema inspection, row sampling, syntax verification, and error recovery:
 
 ```bash
-# Evaluate Harness-Zero distilled policy (Condition 4):
-python3 scripts/evaluate_benchmark.py \
-  evaluation.model_path=models/mve/harness_zero \
-  'evaluation.benchmarks=[spider_dev]' \
-  evaluation.max_turns=5 \
-  evaluation.output_dir=results/harness_zero_full_eval \
-  evaluation.summary_file=results/harness_zero_full_eval/summary.json
+# Standard Makefile invocation (Condition 4: Harness-Zero):
+make evaluate ARGS="evaluation.model_path=models/mve/harness_zero 'evaluation.benchmarks=[spider_dev]' evaluation.max_turns=5 evaluation.output_dir=results/harness_zero_full_eval evaluation.summary_file=results/harness_zero_full_eval/summary.json"
 
-# Evaluate RLVR policy (Condition 5):
-python3 scripts/evaluate_benchmark.py \
-  evaluation.model_path=models/rlvr/final \
-  'evaluation.benchmarks=[spider_dev]' \
-  evaluation.max_turns=5 \
-  evaluation.output_dir=results/rlvr_eval \
-  evaluation.summary_file=results/rlvr_eval/summary.json
+# Standard Makefile invocation (Condition 5: RLVR Policy):
+make evaluate ARGS="evaluation.model_path=models/rlvr/final 'evaluation.benchmarks=[spider_dev]' evaluation.max_turns=5 evaluation.output_dir=results/rlvr_eval evaluation.summary_file=results/rlvr_eval/summary.json"
 ```
 
 #### B. Conventional Single-Turn Evaluation (SFT Baseline)
 Evaluated with `max_turns=1`, matching standard single-turn text-to-SQL benchmark protocols:
 
 ```bash
-# Evaluate Conventional SFT baseline (Condition 2):
-python3 scripts/evaluate_benchmark.py \
-  evaluation.model_path=models/mve/sft_baseline \
-  'evaluation.benchmarks=[spider_dev]' \
-  evaluation.max_turns=1 \
-  evaluation.output_dir=results/baseline_full_eval \
-  evaluation.summary_file=results/baseline_full_eval/summary.json
+# Standard Makefile invocation (Condition 2: Conventional SFT Baseline):
+make evaluate ARGS="evaluation.model_path=models/mve/sft_baseline 'evaluation.benchmarks=[spider_dev]' evaluation.max_turns=1 evaluation.output_dir=results/baseline_full_eval evaluation.summary_file=results/baseline_full_eval/summary.json"
 ```
 
 ### 4.2 Compare RLVR Sample Efficiency & Asymptotic Accuracy

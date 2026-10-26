@@ -5,6 +5,7 @@ training using Hugging Face TRL SFTTrainer.
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -106,6 +107,12 @@ class SFTWarmupPipeline:
         if report_to == "wandb":
             try:
                 import wandb  # noqa: F401
+
+                project_name = getattr(wandb_cfg, "project", None) or getattr(
+                    self.cfg, "project_name", "ask-the-database"
+                )
+                if project_name and not os.environ.get("WANDB_PROJECT"):
+                    os.environ["WANDB_PROJECT"] = str(project_name)
             except ImportError:
                 logger.warning(
                     "Weights & Biases (wandb) is not installed in the environment. "
