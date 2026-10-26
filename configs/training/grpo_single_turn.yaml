@@ -8,7 +8,10 @@ max_completion_length: 512
 beta: 0.04
 logging_steps: 1
 save_strategy: "epoch"
-report_to: "none"
+report_to: "wandb"
+wandb:
+  enabled: true
+  project: "ask-the-database"
 max_steps: -1
 
 lora:

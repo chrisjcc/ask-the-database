@@ -9,7 +9,10 @@ beta: 0.05
 max_steps: 250
 logging_steps: 5
 save_steps: 50
-report_to: "none"
+report_to: "wandb"
+wandb:
+  enabled: true
+  project: "ask-the-database"
 dry_run: false
 temperature: 0.7
 

@@ -95,7 +95,13 @@ class SFTWarmupPipeline:
         weight_decay = float(getattr(training_cfg, "weight_decay", 0.01))
         logging_steps = int(getattr(training_cfg, "logging_steps", 5))
         save_strategy = str(getattr(training_cfg, "save_strategy", "epoch"))
-        report_to = str(getattr(training_cfg, "report_to", "none"))
+        report_to = str(getattr(training_cfg, "report_to", "wandb"))
+        wandb_cfg = getattr(training_cfg, "wandb", None)
+        if wandb_cfg is not None and hasattr(wandb_cfg, "enabled"):
+            if not wandb_cfg.enabled:
+                report_to = "none"
+            elif report_to == "none":
+                report_to = "wandb"
         max_length = int(getattr(training_cfg, "max_seq_length", 2048))
 
         return SFTConfig(
@@ -168,7 +174,9 @@ class SFTWarmupPipeline:
             tokenizer = self.load_tokenizer(model_name)
 
         if train_dataset is None:
-            custom_dataset = getattr(self.cfg.training, "dataset_path", None)
+            custom_dataset = getattr(self.cfg.training, "dataset_path", None) or getattr(
+                self.cfg.training, "train_data_path", None
+            )
             train_path = (
                 Path(custom_dataset)
                 if custom_dataset
