@@ -78,6 +78,7 @@ class NL2SQLPipeline:
         self.max_turns = max_turns
         self.model = model
         self.tokenizer = tokenizer
+        self.load_error: str | None = None
 
         if self.model is None and self.model_path and Path(self.model_path).exists():
             self._try_load_model()
@@ -128,6 +129,7 @@ class NL2SQLPipeline:
         except Exception as e:
             import logging
 
+            self.load_error = str(e)
             logging.getLogger(__name__).warning(
                 "Could not load model weights from %s: %s", self.model_path, e
             )
@@ -145,7 +147,19 @@ class NL2SQLPipeline:
         if self.model is not None and self.tokenizer is not None:
             import torch
 
-            prompt = format_chatml_prompt(messages)
+            prompt: str = ""
+            if hasattr(self.tokenizer, "apply_chat_template"):
+                try:
+                    prompt = str(
+                        self.tokenizer.apply_chat_template(
+                            messages, tokenize=False, add_generation_prompt=True
+                        )
+                    )
+                except Exception:
+                    prompt = format_chatml_prompt(messages)
+            else:
+                prompt = format_chatml_prompt(messages)
+
             inputs = self.tokenizer(prompt, return_tensors="pt")
             if hasattr(self.model, "device"):
                 inputs = {k: v.to(self.model.device) for k, v in inputs.items()}

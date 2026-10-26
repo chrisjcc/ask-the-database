@@ -192,3 +192,14 @@ def test_prompt_formatting_and_action_parsing() -> None:
     act3, payload3 = parse_agent_action("SELECT * FROM users;")
     assert act3 == "final_answer"
     assert payload3 == "SELECT * FROM users;"
+
+    # Markdown code fence stripping
+    act4, payload4 = parse_agent_action("```sql\nSELECT * FROM users;\n```")
+    assert act4 == "final_answer"
+    assert payload4 == "SELECT * FROM users;"
+
+    act5, payload5 = parse_agent_action(
+        "<final_answer>\n```sql\nSELECT * FROM users;\n```\n</final_answer>"
+    )
+    assert act5 == "final_answer"
+    assert payload5 == "SELECT * FROM users;"
