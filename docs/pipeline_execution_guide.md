@@ -58,6 +58,10 @@ source .venv/bin/activate
 
 # 3. Install AskTheDatabase in editable mode with development and training dependencies
 make install
+pip install wandb  # Or install all optional dependencies: pip install -e ".[all]"
+
+# HPC Cluster Best Practice: Prevent user ~/.local site-packages from leaking into environment
+export PYTHONNOUSERSITE=1
 
 # Optional (GPU Cluster): If you need a specific CUDA build of PyTorch matching your NVIDIA drivers:
 # pip install torch --index-url https://download.pytorch.org/whl/cu121
@@ -106,50 +110,62 @@ make preprocess
 
 ## 2. Supervised Fine-Tuning & Distillation
 
-### 2.1 Conventional SFT Baseline Training
+### 2.1 Conventional SFT Baseline Training (Condition 2)
 
 Train the base model on ground-truth static text-to-SQL demonstration pairs using LoRA ($r=16, \alpha=32$):
 
 ```bash
-# Fast dry-run check (< 1 second verification):
-make train-sft ARGS="dry_run=true"
-
-# Full dataset training (Default: Qwen2.5-Coder-7B-Instruct):
-make train-sft
-
-# Lightweight 1.5B alternative:
+# Via Makefile:
 make train-sft ARGS="model=qwen2_5_coder_1_5b"
 
-# Subsampled warmup run (e.g. 500 samples):
-make train-sft ARGS="training.output_dir=models/sft/warmup data.max_samples=500"
+# Or via Direct CLI execution (Condition 2: Conventional Baseline):
+python3 scripts/train_sft.py \
+  model=qwen2_5_coder_1_5b \
+  training.dataset_path=data/processed/train.jsonl \
+  training.output_dir=models/mve/sft_baseline \
+  training.num_train_epochs=2 \
+  training.per_device_train_batch_size=4 \
+  training.gradient_accumulation_steps=2 \
+  training.learning_rate=2e-5 \
+  training.report_to=wandb 2>&1 | tee train_mve_sft_baseline.log
 ```
-* **Resulting Checkpoint:** `models/sft/checkpoint-final` (or custom `training.output_dir`)
+* **Resulting Checkpoint:** `models/mve/sft_baseline` (or custom `training.output_dir`)
+* **Data Format:** `data/processed/train.jsonl` consists of single-turn demonstration pairs where the user prompt contains the question and full database schema DDL, and the assistant responds directly with the target SQL.
 
 ---
 
-### 2.2 Harness-Zero Procedural Trajectory Distillation
+### 2.2 Harness-Zero Procedural Trajectory Distillation (Condition 4)
 
 Fine-tune the student policy on on-policy multi-turn rollouts reviewed and repaired by the reference review harness $\mathcal{K}_{\text{SQL}}$ to internalize schema inspection and error recovery behaviors:
 
 > [!TIP]
 > **Why run dry runs first?**  
-> Dry runs are 5-second smoke tests designed to catch configuration, environment, database path, and syntax errors without allocating long-running GPU compute:
+> Dry runs are fast smoke tests designed to catch configuration, environment, database path, and syntax errors without allocating long-running GPU compute:
 > 1. `make collect-distillation ARGS="--dry-run"` verifies SQLite paths, reference rules, and JSONL export.
 > 2. `make train-harness-zero ARGS="dry_run=true"` verifies tokenizer loading, LoRA configuration, and optimizer allocation.
 
 #### Step 1: Collect Reviewed Trajectories
-```bash
-# Fast dry-run smoke test (5 sample episodes to verify pipeline health):
-make collect-distillation ARGS="--dry-run"
+Collect balanced, difficulty-stratified teacher-reviewed trajectories (150 medium, 200 hard, 150 extra-hard):
 
-# Full collection: Collect stratified reviewed trajectories:
-make collect-distillation
+```bash
+# Via Direct CLI (Recommended for full 500-sample balanced stratification):
+python3 scripts/collect_reviewed_trajectories.py \
+  --raw-spider data/raw/spider_data/train_spider.json \
+  --databases-dir data/databases \
+  --n-medium 150 \
+  --n-hard 200 \
+  --n-extra 150 \
+  --output data/distillation/reviewed_trajectories.jsonl \
+  --metrics-output data/distillation/collection_metrics.json
+
+# Or fast dry-run smoke test (5 sample episodes to verify pipeline health):
+make collect-distillation ARGS="--dry-run"
 ```
 
 * **Teacher Backend Options:**
   - **Deterministic Pure Rule Engine (Default — 100% Offline, Zero API Calls):**
     ```bash
-    make collect-distillation ARGS="--teacher-backend rule"
+    python3 scripts/collect_reviewed_trajectories.py --teacher-backend rule
     ```
   - **Optional: Google Gemini 2.0 Flash (External LLM Teacher via `GEMINI_API_KEY`):**
     ```bash
@@ -159,17 +175,28 @@ make collect-distillation
     ```
 
 #### Step 2: Fine-Tune on Reviewed Trajectories
+
 ```bash
-# Fast dry-run check (< 1 second verification):
-make train-harness-zero ARGS="dry_run=true"
+# Via Makefile:
+make train-harness-zero ARGS="model=qwen2_5_coder_1_5b training.output_dir=models/mve/harness_zero"
 
-# Full training on reviewed trajectories:
-make train-harness-zero ARGS="training.output_dir=models/sft/harness_zero"
-
-# Lightweight 1.5B alternative:
-make train-harness-zero ARGS="model=qwen2_5_coder_1_5b training.output_dir=models/sft/harness_zero"
+# Or via Direct CLI (Condition 4: Harness-Zero Distillation):
+python3 scripts/train_sft.py \
+  model=qwen2_5_coder_1_5b \
+  training.dataset_path=data/distillation/reviewed_trajectories.jsonl \
+  training.output_dir=models/mve/harness_zero \
+  training.num_train_epochs=2 \
+  training.per_device_train_batch_size=2 \
+  training.gradient_accumulation_steps=4 \
+  training.learning_rate=2e-4 \
+  training.max_seq_length=2048 \
+  training.report_to=wandb 2>&1 | tee train_mve_harness_zero_reviewed_trajectories_500.log
 ```
-* **Resulting Checkpoint:** `models/sft/harness_zero`
+* **Resulting Checkpoint:** `models/mve/harness_zero`
+
+> [!IMPORTANT]
+> **Multi-Turn Trajectory Preservation (`load_sft_dataset`):**  
+> `data/distillation/reviewed_trajectories.jsonl` stores the full 4–9 turn interactive conversation (`inspect_schema`, `execute_sql`, `final_answer`) inside `item["messages"]`. The training dataset loader [`src/ask_the_database/training/dataset.py`](../src/ask_the_database/training/dataset.py) preserves these multi-turn message sequences verbatim. This ensures the student policy learns active schema exploration and test query execution before emitting final SQL answers, bypassing the need for pre-computed schema DDL in the initial user prompt.
 
 ---
 
@@ -206,14 +233,40 @@ sbatch scripts/slurm/launch_rlvr_sweep.sh
 ## 4. Benchmark Evaluation & Telemetry
 
 ### 4.1 Benchmark Evaluation on Held-Out Splits
-Evaluate any saved checkpoint across standard Spider splits and robustness variants (`spider_dev`, `spider_realistic`):
+Evaluate checkpoints across standard Spider splits and robustness variants (`spider_dev`, `spider_realistic`). Note the evaluation protocol differences between interactive agent policies and conventional single-turn baselines:
+
+#### A. Interactive Multi-Turn Evaluation (Harness-Zero & RLVR Policies)
+Evaluated with `max_turns=5` to permit interactive schema inspection, row sampling, syntax verification, and error recovery:
 
 ```bash
-# Evaluate checkpoint
+# Evaluate Harness-Zero distilled policy (Condition 4):
 python3 scripts/evaluate_benchmark.py \
-  evaluation.model_path="models/rlvr/harness_zero_grpo" \
-  evaluation.output_dir="results/rlvr_eval" \
-  evaluation.summary_file="results/rlvr_eval/summary.json"
+  evaluation.model_path=models/mve/harness_zero \
+  'evaluation.benchmarks=[spider_dev]' \
+  evaluation.max_turns=5 \
+  evaluation.output_dir=results/harness_zero_full_eval \
+  evaluation.summary_file=results/harness_zero_full_eval/summary.json
+
+# Evaluate RLVR policy (Condition 5):
+python3 scripts/evaluate_benchmark.py \
+  evaluation.model_path=models/rlvr/final \
+  'evaluation.benchmarks=[spider_dev]' \
+  evaluation.max_turns=5 \
+  evaluation.output_dir=results/rlvr_eval \
+  evaluation.summary_file=results/rlvr_eval/summary.json
+```
+
+#### B. Conventional Single-Turn Evaluation (SFT Baseline)
+Evaluated with `max_turns=1`, matching standard single-turn text-to-SQL benchmark protocols:
+
+```bash
+# Evaluate Conventional SFT baseline (Condition 2):
+python3 scripts/evaluate_benchmark.py \
+  evaluation.model_path=models/mve/sft_baseline \
+  'evaluation.benchmarks=[spider_dev]' \
+  evaluation.max_turns=1 \
+  evaluation.output_dir=results/baseline_full_eval \
+  evaluation.summary_file=results/baseline_full_eval/summary.json
 ```
 
 ### 4.2 Compare RLVR Sample Efficiency & Asymptotic Accuracy
@@ -229,7 +282,10 @@ make compare-rlvr
   - `results/rlvr_sample_efficiency_summary.json`
 
 ### 4.3 Weights & Biases (W&B) Dashboard Inspection
-When `training.report_to=wandb` is enabled, monitor live telemetry under project `ask-the-database`:
+Weights & Biases telemetry is **enabled by default** across all Hydra training configurations (`sft.yaml`, `grpo_single_turn.yaml`, `rlvr_skyrl_agent.yaml`). Monitor live telemetry under project `ask-the-database`:
+
+> [!TIP]
+> **Offline Toggle:** If running on an offline compute node or without W&B credentials, disable tracking by passing `training.report_to=none` or `training.wandb.enabled=false`.
 
 1. **`mean_reward` vs. `step` (Convergence Speed Curve)**:
    - Tracks the progression of mean rollout reward. Harness-Zero initialized runs cross positive reward ($R > 0$) early (bypassing the zero-variance cold-start plateau).
