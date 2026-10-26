@@ -102,6 +102,17 @@ class SFTWarmupPipeline:
                 report_to = "none"
             elif report_to == "none":
                 report_to = "wandb"
+
+        if report_to == "wandb":
+            try:
+                import wandb  # noqa: F401
+            except ImportError:
+                logger.warning(
+                    "Weights & Biases (wandb) is not installed in the environment. "
+                    "Falling back to report_to='none'. Install with `pip install wandb`."
+                )
+                report_to = "none"
+
         max_length = int(getattr(training_cfg, "max_seq_length", 2048))
 
         return SFTConfig(
