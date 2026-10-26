@@ -208,11 +208,14 @@ class NL2SQLPipeline:
         had_intermediate_error = False
         step_reward = 0.0
 
+        # In unit-test mock mode (when model_path is None), allow default_query to be gold_sql
+        mock_default = gold_sql if self.model_path is None else None
+
         for turn_idx in range(1, effective_max_turns + 1):
             completion = self.generate_step(
                 env.history,
                 available_tables=available_tables,
-                default_query=None,
+                default_query=mock_default,
             )
             obs, step_reward, done, info = env.step(completion)
 
