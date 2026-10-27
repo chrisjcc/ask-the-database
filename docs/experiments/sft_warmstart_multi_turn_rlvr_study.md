@@ -1,4 +1,4 @@
-# Empirical Study: Comparative Analysis of Single-Turn SFT vs. Harness-Zero Multi-Turn Distilled SFT as Warm-Start Policies for Multi-Turn Database RLVR
+# Empirical Study: Evaluating Warm-Start Policy Architectures for Multi-Turn Database RLVR
 
 **Document ID**: `EXP-RLVR-2026-001`  
 **Status**: Proposal & Experimental Design  
@@ -10,256 +10,259 @@
 
 ## Executive Summary
 
-Reinforcement Learning with Verifiable Rewards (RLVR), instantiated via Group Relative Policy Optimization (GRPO), has demonstrated state-of-the-art reasoning gains in formal domains such as mathematics and code generation. In single-turn mathematical reasoning (e.g., DeepSeek-R1, Skywork-OR1), RL training successfully initializes from single-turn supervised fine-tuning (SFT) to prevent cold-start exploration failure.
+Reinforcement Learning with Verifiable Rewards (RLVR), instantiated via Group Relative Policy Optimization (GRPO), has achieved remarkable reasoning breakthroughs in formal, single-turn domains like mathematics and competitive programming. In mathematical reasoning benchmarks (e.g., DeepSeek-R1, Skywork-OR1), RL training successfully initializes from standard single-turn Supervised Fine-Tuning (SFT) to circumvent cold-start exploration failure.
 
-However, in **multi-turn relational database environments** (`SkyRLSQLEnvironment`), the action space comprises multi-step tool calls (`inspect_schema`, `sample_data`, `execute_sql`, `final_answer`), persistent database state transitions, and error diagnosis. Initializing multi-turn RL from a conventional single-turn SFT baseline creates a severe structural mismatch: the policy must simultaneously discover tool-calling syntax, relational exploration protocols, and optimal SQL generation purely through trial-and-error exploration.
+However, in **multi-turn relational database environments** ([`SkyRLSQLEnvironment`](file:///Users/christiancontrerascampana/Desktop/GitHub/text-to-sql/ask-the-database/src/ask_the_database/training/environments/skyrl_sql.py)), the agent's action space fundamentally diverges from single-turn semantic parsing. The policy must execute sequential tool actions (`inspect_schema`, `sample_data`, `execute_sql`, `final_answer`), manage state transitions across database connections, and diagnose runtime exceptions. Initializing multi-turn RL from a conventional single-turn SFT baseline creates a severe structural mismatch: the policy must simultaneously discover tool-calling syntax, exploratory catalog navigation, and syntactically sound SQL queries purely through unguided reinforcement exploration.
 
-This document specifies an empirical study addressing the central question:
+This document presents the experimental design for an empirical investigation addressing the central question:
 
-> **Research Question:** *Which SFT policy is the superior foundation for downstream multi-turn RLVR in database environments: a conventional single-turn SFT baseline (Condition 2) or a Harness-Zero multi-turn distilled SFT checkpoint (Condition 4)?*
+> **Research Question:** *Which supervised fine-tuning policy provides the superior starting point for downstream multi-turn RLVR in relational database environments: a conventional single-turn SFT baseline or a Harness-Zero multi-turn distilled policy?*
 
 ```
                        The 2x2 Experimental Paradigm
                        
         Phase 1: Supervised Warm-Start            Phase 2: Multi-Turn RLVR (GRPO)
     ┌─────────────────────────────────────┐      ┌───────────────────────────────┐
-    │ Condition 2: Baseline SFT           │ ───> │ Run A: Baseline-Warmstarted   │
-    │ (Single-Turn Gold Demonstration)    │      │ Multi-Turn GRPO Policy        │
+    │ Conventional Single-Turn SFT        │ ───> │ Run A: Baseline-Warmstarted   │
+    │ (Standard Gold Demonstration Pairs) │      │ Multi-Turn GRPO Policy        │
     └─────────────────────────────────────┘      └───────────────────────────────┘
                                                                 VS
-    ┌─────────────────────────────────────┐      ┌────────────────────────────-───┐
-    │ Condition 4: Harness-Zero SFT       │ ───> │ Run B: Harness-Zero-Warmstarted│
-    │ (Multi-Turn Distilled Trajectories) │      │ Multi-Turn GRPO Policy         │
-    └─────────────────────────────────────┘      └──────────────────────────────-─┘
+    ┌─────────────────────────────────────┐      ┌───────────────────────────────┐
+    │ Harness-Zero Multi-Turn Distillation│ ───> │ Run B: Harness-Zero-Warmstart │
+    │ (Procedural Teacher-Reviewed Loops) │      │ Multi-Turn GRPO Policy        │
+    └─────────────────────────────────────┘      └───────────────────────────────┘
 ```
 
 ---
 
-## 1. Conceptual Foundation & Pillar Cross-Check
+## 1. Background & Motivation: The Exploration Bottleneck in Relational RLVR
 
-We examine the four architectural pillars defined in the AskTheDatabase system design ([`docs/medium_article_ask_the_database.md`](file:///Users/christiancontrerascampana/Desktop/GitHub/text-to-sql/ask-the-database/docs/medium_article_ask_the_database.md)) and evaluate their relevance to this comparative study:
+Building autonomous relational database agents reveals a fundamental tension between exploration fidelity, inference latency, and reinforcement learning stability.
 
 ```
-┌────────────────────────────────────────┬─────────────┬────────────────────────────────────────────────────────┐
-│ Pillar Architecture                    │ Status      │ Rationale for Empirical Study                          │
-├────────────────────────────────────────┼─────────────┼────────────────────────────────────────────────────────┤
-│ 1. Harness-Zero Distillation           │ INTEGRATED  │ Provides the multi-turn procedural SFT checkpoint      │
-│    (Agent-as-Harness)                  │ (Core)      │ (Condition 4) enforcing 4 deterministic invariants.    │
-├────────────────────────────────────────┼─────────────┼────────────────────────────────────────────────────────┤
-│ 2. Resolving RLVR Cold-Start Plateau   │ INTEGRATED  │ Provides theoretical & mathematical proof for why      │
-│    (Group Relative Advantage Variance) │ (Core)      │ intra-group return variance std(R_g) collapses.        │
-├────────────────────────────────────────┼─────────────┼────────────────────────────────────────────────────────┤
-│ 3. LLM-as-a-Verifier & Pareto Frontier │ ABLATED /   │ Excluded during training to isolate generator policy   │
-│    (Best-of-N Compound Verification)   │ POST-HOC    │ gains; retained only for post-hoc inference tests.     │
-├────────────────────────────────────────┼─────────────┼────────────────────────────────────────────────────────┤
-│ 4. Zero-Budget Evaluation Micro-Harness│ INTEGRATED  │ Enables rapid in-process sanity checks (126.8 ms) and  │
-│    (Dual In-Memory Mutants & Traps)    │ (Core)      │ failure attribution across RL training checkpoints.    │
-└────────────────────────────────────────┴─────────────┴────────────────────────────────────────────────────────┘
+┌───────────────────────────────────┬────────────────────────────────────────────────────────────────────────┐
+│ Challenge Dimension               │ Operational Reality in Relational Environments                         │
+├───────────────────────────────────┼────────────────────────────────────────────────────────────────────────┤
+│ 1. The Schema Guessing Dilemma    │ Single-turn models hallucinate columns on unseen schemas;              │
+│                                   │ Multi-turn runtime prompt harnesses incur 5-10x latency overhead.      │
+├───────────────────────────────────┼────────────────────────────────────────────────────────────────────────┤
+│ 2. The Cold-Start Gradient Crisis │ When ungrounded rollouts fail simultaneously, intra-group advantage    │
+│                                   │ variance collapses to zero, completely starving the policy gradient.   │
+├───────────────────────────────────┼────────────────────────────────────────────────────────────────────────┤
+│ 3. Generator vs. Verifier Dynamics│ Test-time verifiers re-rank candidate pools but cannot rescue          │
+│                                   │ pools where all candidates hallucinate non-existent database columns.  │
+├───────────────────────────────────┼────────────────────────────────────────────────────────────────────────┤
+│ 4. Fast Diagnostic Gatekeeping    │ Full Spider evaluation takes 3-6 minutes; high-frequency RL            │
+│                                   │ telemetry requires sub-second in-memory diagnostic error attribution.  │
+└───────────────────────────────────┴────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Pillar 1: Harness-Zero (Harness Distillation via Agent-as-Harness)
-* **Status**: **Fully Integrated (Phase 1 Independent Variable)**.
-* **Role**: As established by Ye et al. (arXiv:2609.24974), Harness-Zero internalizes external agentic scaffolding directly into model parameters without gold query leakage. A procedural reviewer $\mathcal{K}_{\text{SQL}}$ monitors student trajectories and enforces four deterministic protocols:
-  1. `RequireSchemaInspection`: Forces catalog discovery before table access.
-  2. `RequireRowSampling`: Enforces categorical value and formatting checks.
-  3. `EnforceDryRunBeforeFinish`: Mandates execution validation before outputting final answers.
-  4. `DiagnosticRecovery`: Catches operational exceptions and forces targeted schema re-inspection.
-* In this study, Condition 4 represents the policy distilled from 500 $\mathcal{K}_{\text{SQL}}$-reviewed episodes, serving as the experimental warm-start for Run B.
+### 1.1 The Multi-Turn Latency Tax vs. Procedural Distillation
+In real-world databases containing dozens of tables and hundreds of attributes, single-turn SQL generation fails because the model lacks ground-level knowledge of local naming conventions, enums, and foreign keys. The conventional industry remedy is **agentic prompt scaffolding** (such as ReAct, Reflexion, or DIN-SQL), which forces the model through interactive loops of schema inspection and test execution.
 
-### Pillar 2: Resolving the RLVR Cold-Start Plateau
-* **Status**: **Fully Integrated (Core Theoretical Framework)**.
-* **Role**: Formulates the primary mathematical hypothesis. Single-turn SFT models lack multi-turn conversational priors. When exposed to unseen database schemas in GRPO, all rollouts within a group fail basic tool invocation or column existence simultaneously, driving intra-group variance to zero ($\operatorname{std}(R_g) = 0 \implies A_i = 0$) and causing gradient starvation. Harness-Zero provides the exploratory bootstrap necessary for positive reward discovery from Step 1.
+While runtime prompt harnesses improve accuracy, they impose a severe latency penalty: a 5-turn interactive loop requires 5 sequential LLM round-trips, producing interactive latencies of 4 to 8 seconds. 
 
-### Pillar 3: LLM-as-a-Verifier & The Pareto Frontier
-* **Status**: **Explicitly Ablated from Training Loop (Preserved for Post-Hoc Evaluation)**.
-* **Justification for Exclusion during RL Training**: Test-time compound verification (Best-of-$N$ with continuous logit verifiers) operates as a test-time re-ranking mechanism over candidate pools. If compound verification were applied during RLVR evaluation, it would act as an external confounder, masking whether performance improvements stem from policy learning or verifier filtering. To guarantee scientific rigor, the primary evaluation compares pure autoregressive greedy decoding of Policy A vs. Policy B. A secondary post-hoc ablation examines how both policies interact when paired with the Pillar 3 verifier.
+**Harness-Zero** (Ye et al., arXiv:2609.24974) resolves this trade-off by distilling agentic discipline directly into neural weights. Rather than orchestrating prompt wrappers at inference time, a reference procedural reviewer $\mathcal{K}_{\text{SQL}}$ monitors student trajectories during an offline data collection phase and enforces four deterministic procedural invariants:
+1. `RequireSchemaInspection`: Intercepts premature SQL emission and mandates catalog inspection.
+2. `RequireRowSampling`: Enforces categorical value and formatting checks against raw database tables.
+3. `EnforceDryRunBeforeFinish`: Mandates execution validation before outputting final answers.
+4. `DiagnosticRecovery`: Catches operational exceptions and forces targeted schema re-inspection.
 
-### Pillar 4: Zero-Budget Evaluation Micro-Harness
-* **Status**: **Fully Integrated (Diagnostic & High-Frequency Telemetry)**.
-* **Role**: Running full Spider Dev (1,034 queries) takes 3–6 minutes per checkpoint, rendering frequent evaluation during RL training intractable. The Zero-Budget Micro-Harness evaluates 35 dual-state in-memory SQLite fixtures (`:memory:`) in **126.8 ms** with a **$\rho = 1.000$ Spearman rank correlation** to Spider Dev. It is deployed every 25 RL training steps to track AST dialect drift, join fanout errors, and column hallucinations in real time.
+Crucially, $\mathcal{K}_{\text{SQL}}$ operates with **zero gold query leakage**: it inspects only database catalogs and execution exceptions, preventing the student from memorizing oracle shortcuts. Once the student policy is fine-tuned on these repaired trajectories, the external reviewer is discarded, delivering multi-turn exploratory discipline at single-turn inference latency.
+
+### 1.2 The Zero-Variance Cold-Start Collapse in Multi-Turn RLVR
+When training multi-turn agents with Group Relative Policy Optimization (GRPO), policy updates depend on normalized intra-group advantage:
+
+![Group Advantage Normalization Equation](figures/eq_advantage_normalization.png)
+
+$$\hat{A}_i = \frac{R_i - \text{mean}(\{R_j\}_{j=1}^G)}{\text{std}(\{R_j\}_{j=1}^G) + \epsilon_{\text{adv}}}$$
+
+If a model trained exclusively on single-turn demonstration pairs is deployed in an interactive environment without schema DDL in the prompt, its probability of emitting valid tool syntax is near zero. Consequently, across all $G$ parallel rollouts sampled for a given prompt, **every rollout fails simultaneously** on unseen schemas ($R_1 = R_2 = \dots = R_G = -1.0$).
+
+When every rollout in the group fails:
+
+![Cold-Start Gradient Collapse Equation](figures/eq_cold_start_collapse.png)
+
+$$\text{std}(\{R_j\}_{j=1}^G) = 0 \implies \hat{A}_i = 0 \implies \nabla_\theta \mathcal{J}_{\text{GRPO}}(\theta) \approx \mathbf{0}$$
+
+The group advantage vanishes, the policy gradient collapses to zero, and the model enters an extended exploration plateau where it receives no directional reinforcement signal.
+
+Warm-starting from a Harness-Zero distilled checkpoint guarantees that the agent enters RLVR with established tool-calling and catalog-inspection priors ($P(\text{inspect\_schema}) \ge 84.6\%$). At least one rollout per group succeeds in querying the catalog, guaranteeing divergent intra-group returns ($\text{std}(R_g) > 0.45$) and active policy gradients from Step 1.
+
+### 1.3 Isolating Policy Learning from Test-Time Verification
+In production architectures, compound verification (such as LLM-as-a-Verifier with Best-of-$N$ candidate tournament selection) provides powerful orthogonal gains. However, a verifier is fundamentally a re-ranker: it cannot generate valid SQL if all candidates in the generated pool hallucinate non-existent columns.
+
+To maintain scientific rigor in this study, **test-time verifiers are held fixed and excluded from the core training and evaluation loops**. This isolates the generator's intrinsic policy improvement. A dedicated post-hoc extension (Section 8) then evaluates how both trained policies interact when paired with compound verification at inference time.
+
+### 1.4 High-Frequency Checkpoint Telemetry via In-Memory Micro-Harnesses
+Evaluating checkpoints across the full 1,034 queries of the Spider benchmark requires 3 to 6 minutes of GPU cluster compute over disk-bound SQLite files, making frequent checkpoint evaluation during RLVR training intractable.
+
+To monitor policy health and detect failure modes during training, we integrate an in-memory **Zero-Budget Evaluation Micro-Harness**. Executing 35 dual-state in-memory SQLite fixtures (`:memory:`) in **126.8 ms**, it provides a **$\rho = 1.000$ Spearman rank correlation** with full Spider Dev benchmark results. The micro-harness runs every 25 RL training steps, classifying failed rollouts into specific diagnostic traps (column hallucinations, dialect drift, join fanouts) to provide granular failure attribution in real time.
 
 ---
 
 ## 2. Research Question & Mathematical Hypotheses
 
-### Formal Research Question
-Does pre-training an agent on multi-turn procedural trajectories via Harness-Zero (Condition 4) yield superior sample efficiency, optimization stability, and asymptotic test-suite accuracy during downstream multi-turn RLVR compared to initializing from a conventional single-turn SFT baseline (Condition 2)?
+### Central Research Question
+> **Research Question:** Does warm-starting multi-turn database RLVR from a Harness-Zero multi-turn distilled policy yield superior sample efficiency, optimization stability, and asymptotic test-suite accuracy compared to warm-starting from a conventional single-turn SFT baseline?
 
-### Mathematical Formulation of the Cold-Start Failure Mode
+### Mathematical Formulation of Policy Optimization
 
-In Group Relative Policy Optimization (GRPO), policy parameters $\theta$ are updated by sampling a group of $G$ trajectories $\{o_1, o_2, \dots, o_G\}$ for each user prompt $q$:
+In Group Relative Policy Optimization (GRPO), policy parameters $\theta$ are updated over groups of $G$ rollouts sampled for each question prompt $q$:
 
-$$\mathcal{J}_{\text{GRPO}}(\theta) = \mathbb{E}_{q \sim \mathcal{D}, \{o_i\}_{i=1}^G \sim \pi_{\theta_{\text{old}}}(q)} \left[ \frac{1}{G} \sum_{i=1}^G \frac{1}{|o_i|} \sum_{t=1}^{|o_i|} \min \left( r_{i,t}(\theta) \hat{A}_i, \operatorname{clip}(r_{i,t}(\theta), 1-\epsilon, 1+\epsilon) \hat{A}_i \right) - \beta D_{\text{KL}}(\pi_\theta \parallel \pi_{\text{ref}}) \right]$$
+![GRPO Objective Equation](figures/eq_grpo_objective.png)
 
-where the probability ratio is $r_{i,t}(\theta) = \frac{\pi_\theta(o_{i,t} \mid q, o_{i,<t})}{\pi_{\theta_{\text{old}}}(o_{i,t} \mid q, o_{i,<t})}$, and the normalized group advantage $\hat{A}_i$ is computed across the group rewards $\{R_1, R_2, \dots, R_G\}$:
+$$\mathcal{J}_{\text{GRPO}}(\theta) = \mathbb{E}_{q \sim \mathcal{D}, \{o_i\}_{i=1}^G \sim \pi_{\theta_{\text{old}}}(q)} \left[ \frac{1}{G} \sum_{i=1}^G \frac{1}{|o_i|} \sum_{t=1}^{|o_i|} \min\left(r_{i,t}(\theta)\hat{A}_i, \text{clip}(r_{i,t}(\theta), 1-\epsilon, 1+\epsilon)\hat{A}_i\right) - \beta D_{\text{KL}}(\pi_\theta \parallel \pi_{\text{ref}}) \right]$$
 
-$$\hat{A}_i = \frac{R_i - \operatorname{mean}(\{R_j\}_{j=1}^G)}{\operatorname{std}(\{R_j\}_{j=1}^G) + \epsilon_{\text{adv}}}$$
+where $r_{i,t}(\theta) = \frac{\pi_\theta(o_{i,t} \mid q, o_{i,<t})}{\pi_{\theta_{\text{old}}}(o_{i,t} \mid q, o_{i,<t})}$ represents the per-token probability ratio, $\beta$ is the KL penalty coefficient against the reference policy, and $\hat{A}_i$ is the normalized intra-group advantage.
 
-#### The Zero-Variance Gradient Collapse Theorem
-Let $\pi_{\text{Cond2}}$ be a single-turn SFT baseline deployed in the multi-turn `SkyRLSQLEnvironment`. Because $\pi_{\text{Cond2}}$ was trained exclusively on $(DDL + Question \to SQL)$ single-turn demonstrations, its initial probability of emitting valid interactive tool syntax $\mathcal{A}_{\text{tool}} = \{\text{inspect\_schema}, \text{sample\_data}, \text{execute\_sql}\}$ is bounded by $\delta \approx 0$.
-
-When $G$ rollouts are sampled on an unseen schema $\mathcal{S}_{\text{unseen}}$:
-
-$$P\left( R_1 = R_2 = \dots = R_G = R_{\text{fail}} \mid \pi_{\text{Cond2}}, \mathcal{S}_{\text{unseen}} \right) = (1 - \delta)^G \to 1.0$$
-
-where $R_{\text{fail}} = -1.0$ (syntax/environment error penalty).
-
-Consequently:
-
-$$\operatorname{std}(\{R_j\}_{j=1}^G) = 0 \implies \hat{A}_i = 0 \quad \forall i \in \{1, \dots, G\}$$
-
-$$\nabla_\theta \mathcal{J}_{\text{GRPO}}(\theta) = -\beta \nabla_\theta D_{\text{KL}}(\pi_\theta \parallel \pi_{\text{ref}}) \approx \mathbf{0}$$
-
-The policy gradient with respect to task reward vanishes completely. The policy receives zero reinforcement signal to navigate the database, entering a prolonged exploration plateau.
-
-#### The Harness-Zero Variance Guarantee
-In contrast, the Harness-Zero checkpoint $\pi_{\text{Cond4}}$ has internalized the four procedural exploration habits. Its schema inspection prior satisfies:
-
-$$P(\text{inspect\_schema} \mid q, \pi_{\text{Cond4}}) \ge 0.846$$
-
-Because at least one rollout in group $G$ successfully accesses the catalog and executes a syntactically conforming trial query:
-
-$$\mathbb{E}[\operatorname{std}(\{R_j\}_{j=1}^G) \mid \pi_{\text{Cond4}}] > 0.45$$
-
-This ensures non-zero, directional policy gradient updates ($\nabla_\theta \mathcal{J} \neq \mathbf{0}$) starting from Step 1.
-
----
-
-### Empirical Hypotheses
+### Formal Empirical Hypotheses
 
 * **Hypothesis 1 (Sample Efficiency & Convergence Speed)**:  
-  Run B (initialized from Harness-Zero) will achieve positive mean training reward ($R > 0.0$) in at least $3.0\times$ fewer gradient steps than Run A (initialized from single-turn SFT):
-  $$T_{\text{milestone}}(B) \le \frac{1}{3} T_{\text{milestone}}(A)$$
+  Run B (Harness-Zero warm-start) will achieve a positive mean training reward ($R_{\text{mean}} > 0.0$) in at least $3.0\times$ fewer gradient steps than Run A (single-turn baseline warm-start):
+  $$T_{\text{milestone}}(\text{Run B}) \le \frac{1}{3} \times T_{\text{milestone}}(\text{Run A})$$
 
-* **Hypothesis 2 (Cumulative Reward AUC)**:  
-  Across 250 RL training steps, the Area Under the Curve (AUC) of training rewards will be substantially higher for Run B:
-  $$\operatorname{AUC}_{0 \to 250}(R_{\text{Run B}}) - \operatorname{AUC}_{0 \to 250}(R_{\text{Run A}}) \ge +80.0$$
+* **Hypothesis 2 (Cumulative Reward Area Under the Curve)**:  
+  Over 250 RL training steps, the cumulative reward Area Under the Curve (AUC) for Run B will surpass Run A by at least $+80.0$:
+  $$\text{AUC}_{0 \to 250}(R_{\text{Run B}}) - \text{AUC}_{0 \to 250}(R_{\text{Run A}}) \ge +80.0$$
 
 * **Hypothesis 3 (Asymptotic Test-Suite Accuracy)**:  
-  After 250 steps of multi-turn GRPO, the resulting policy $\pi_{\text{RLVR-B}}$ will achieve at least a **+5.0 percentage point (pp)** higher Test-Suite Accuracy (TS) on held-out Spider Dev than $\pi_{\text{RLVR-A}}$:
-  $$\text{TS}(\pi_{\text{RLVR-B}}) - \text{TS}(\pi_{\text{RLVR-A}}) \ge +5.0\text{ pp}$$
+  After 250 gradient steps of multi-turn GRPO, the resulting policy from Run B will achieve at least a **+5.0 percentage point (pp)** improvement in Test-Suite Accuracy (TS) on held-out Spider Dev compared to Run A:
+  $$\text{TS}(\pi_{\text{Run B}}) - \text{TS}(\pi_{\text{Run A}}) \ge +5.0\text{ pp}$$
 
-* **Hypothesis 4 (Multi-Turn Error Recovery)**:  
-  Run B will exhibit a significantly higher Multi-Turn Recovery Rate (MRR), defined as the percentage of trajectories that encounter an initial database execution error but autonomously correct it:
-  $$\text{MRR}(\pi_{\text{RLVR-B}}) \ge 35.0\% \quad \text{vs.} \quad \text{MRR}(\pi_{\text{RLVR-A}}) \le 22.0\%$$
+* **Hypothesis 4 (Multi-Turn Error Recovery Rate)**:  
+  Run B will exhibit a significantly higher Multi-Turn Recovery Rate (MRR)—the proportion of episodes that encounter an execution error in early turns but autonomously diagnose and resolve it before final answer submission:
+  $$\text{MRR}(\pi_{\text{Run B}}) \ge 35.0\% \quad \text{vs.} \quad \text{MRR}(\pi_{\text{Run A}}) \le 22.0\%$$
 
 ---
 
 ## 3. Experimental Design
 
-### The 2×2 Comparative Matrix
+### Comparative Matrix
 
 ```
 ┌─────────────────────────────────┬─────────────────────────────────┬─────────────────────────────────┐
 │ Post-Training Stage             │ Path A: Conventional Warm-Start │ Path B: Harness-Zero Warm-Start │
 ├─────────────────────────────────┼─────────────────────────────────┼─────────────────────────────────┤
-│ Stage 1: Supervised Warm-Start  │ Condition 2: Baseline SFT       │ Condition 4: Harness-Zero SFT   │
-│                                 │ • Data: `train.jsonl` (Single)  │ • Data: `reviewed_500.jsonl`    │
-│                                 │ • Model: `models/mve/sft_base`  │ • Model: `models/mve/harness_0` │
+│ Stage 1: Supervised Warm-Start  │ Single-Turn SFT Baseline        │ Harness-Zero Distilled Policy   │
+│                                 │ • Corpus: `train.jsonl`         │ • Corpus: `reviewed_500.jsonl`  │
 │                                 │ • Format: Question+DDL -> SQL   │ • Format: Multi-turn tool loops │
+│                                 │ • Checkpoint: `models/sft/base` │ • Checkpoint: `models/sft/h_0`  │
 ├─────────────────────────────────┼─────────────────────────────────┼─────────────────────────────────┤
-│ Stage 2: Multi-Turn RLVR        │ Run A: GRPO from SFT Baseline   │ Run B: GRPO from Harness-Zero   │
-│ (Group Relative Policy Opt.)    │ • Init: `models/mve/sft_base`   │ • Init: `models/mve/harness_0`  │
+│ Stage 2: Multi-Turn RLVR        │ Run A: Baseline-Warmstart GRPO  │ Run B: Harness-Zero Warmstart   │
+│ (Group Relative Policy Opt.)    │ • Init: `models/sft/base`       │ • Init: `models/sft/h_0`        │
+│                                 │ • Budget: 250 gradient steps    │ • Budget: 250 gradient steps    │
 │                                 │ • Output: `models/rlvr/run_a`   │ • Output: `models/rlvr/run_b`   │
-│                                 │ • Steps: 250 gradient steps     │ • Steps: 250 gradient steps     │
 ├─────────────────────────────────┼─────────────────────────────────┼─────────────────────────────────┤
-│ Stage 3: Downstream Evaluation  │ Benchmark Evaluation (Run A)    │ Benchmark Evaluation (Run B)    │
-│                                 │ • TS, EX, VA, MRR on Spider     │ • TS, EX, VA, MRR on Spider     │
-│                                 │ • Zero-Budget Micro-Harness     │ • Zero-Budget Micro-Harness     │
+│ Stage 3: Downstream Evaluation  │ Full Spider Dev & Realistic     │ Full Spider Dev & Realistic     │
+│                                 │ • TS, EX, VA, MRR, Latency      │ • TS, EX, VA, MRR, Latency      │
+│                                 │ • In-Memory Micro-Harness       │ • In-Memory Micro-Harness       │
 └─────────────────────────────────┴─────────────────────────────────┴─────────────────────────────────┘
 ```
 
 ### Controlled Variables & Fixed Parameters
-To guarantee that differences between Run A and Run B are strictly attributable to the warm-start policy, all training and environmental hyperparameters are held strictly identical:
+To ensure that all observed empirical variance stems exclusively from the choice of warm-start policy, all training and environmental parameters are held strictly invariant:
 
-| Hyperparameter | Value | Description |
+| Parameter Category | Configuration Parameter | Setting / Value |
 | :--- | :--- | :--- |
-| **Base Model Architecture** | `Qwen/Qwen2.5-Coder-1.5B-Instruct` | Target student foundation model |
-| **LoRA Rank & Alpha** | $r=16, \alpha=32$, dropout=0.05 | Parameter-efficient fine-tuning configuration |
-| **Target LoRA Modules** | `q_proj, k_proj, v_proj, o_proj` | Attention projections |
-| **RL Algorithm** | Group Relative Policy Optimization (GRPO) | TRL / SkyRL multi-turn implementation |
-| **Rollouts per Prompt ($G$)**| 4 parallel rollouts | Group size for advantage baseline normalization |
-| **Max Agent Turns ($T$)** | 5 interactive turns per episode | Turn budget in `SkyRLSQLEnvironment` |
-| **Discount Factor ($\gamma$)** | 0.95 | Multi-turn reward temporal discounting |
-| **KL Penalty ($\beta$)** | 0.04 | Regularization toward reference policy |
-| **Optimizer & Scheduler** | AdamW (`lr=5e-6`, cosine, warmup 10%) | Policy gradient optimization |
-| **Per-Device Batch Size** | 1 prompt per device (4 rollouts) | Gradient accumulation steps: 8 |
-| **Hardware Environment** | $1\times$ NVIDIA A100 (40GB/80GB) | Fixed CUDA seeds (`seed=42`) |
+| **Foundation Model** | Base Architecture | `Qwen/Qwen2.5-Coder-1.5B-Instruct` |
+| **PEFT / LoRA** | Rank ($r$), Alpha ($\alpha$), Dropout | $r=16, \alpha=32$, dropout=0.05 |
+| **LoRA Target Modules** | Linear Projections | `q_proj, k_proj, v_proj, o_proj` |
+| **RL Algorithm** | Policy Optimization Method | Multi-Turn GRPO ([`SkyRLSQLEnvironment`](file:///Users/christiancontrerascampana/Desktop/GitHub/text-to-sql/ask-the-database/src/ask_the_database/training/environments/skyrl_sql.py)) |
+| **Group Size ($G$)** | Rollouts per Prompt | 4 parallel rollouts |
+| **Turn Budget ($T$)** | Maximum Interactive Turns | 5 turns per episode |
+| **Discount Factor ($\gamma$)** | Temporal Discounting | 0.95 |
+| **KL Penalty ($\beta$)** | Divergence Regularization | 0.04 |
+| **Optimization** | Optimizer & Learning Rate | AdamW, $\eta = 5\times 10^{-6}$, cosine schedule, 10% warmup |
+| **Batching** | Per-Device Train Batch Size | 1 prompt (4 rollouts) with 8 gradient accumulation steps |
+| **Hardware & Seeds** | Compute & RNG Initialization | NVIDIA A100 GPU, PyTorch & CUDA `seed = 42` |
 
 ---
 
-## 4. Multi-Turn Verifiable Reward Formulation
+## 4. Multi-Turn Verifiable Reward Rubric
 
-The reinforcement learning environment enforces a verifiable, 4-tier hierarchical reward function designed to eliminate reward hacking and reward genuine relational correctness:
+To eliminate reward hacking while rewarding genuine relational accuracy and autonomous error recovery, the environment evaluates candidate actions against a 4-tier verifiable rubric:
 
-$$\mathcal{R}_{\text{total}} = \mathcal{R}_{\text{syntax}} + \mathcal{R}_{\text{schema}} + \mathcal{R}_{\text{TS}} + \mathcal{R}_{\text{efficiency}}$$
+![Hierarchical Reward Rubric Equation](figures/eq_reward_rubric.png)
+
+$$R_{\text{total}} = R_{\text{syntax}} + R_{\text{schema}} + R_{\text{TS}} + R_{\text{efficiency}}$$
 
 ```
-                       The 4-Tier Verifiable Reward Rubric
+                       The 4-Tier Verifiable Reward Flow
                        
-    Action Emitted
-          │
-          ▼
-    [Tier 1: AST Syntax Validation via SQLGlot] ──(Fails)──► R = -1.0 (Episode Terminates)
-          │ (Passes)
-          ▼
-    [Tier 2: Schema Conformance & Sandbox Exec] ──(Exception)─► R = -0.5 (Feedback to Agent)
-          │ (Executes Cleanly)
-          ▼
-    [Tier 3: Test-Suite Equivalence Engine]
-          ├── Does Q_gen(D_k) == Q_gold(D_k) across K database mutants?
-          │     ├── YES ──► R_TS = +1.0
-          │     └── NO  ──► R_TS = 0.0
-          ▼
-    [Tier 4: Efficiency & Autonomous Recovery Bonus]
-          ├── Turn Penalty: -0.05 * t
-          └── Recovery Bonus: +0.3 (if previous turn failed and current turn passes)
+    Action Emitted by Policy
+               │
+               ▼
+    [Tier 1: AST Syntax Validation via SQLGlot]
+    ├── Syntax error / malformed tool call ──► R_syntax = -1.0 (Episode Terminates)
+    └── Valid AST structure ─────────────────► R_syntax = 0.0
+               │
+               ▼
+    [Tier 2: Schema Conformance & Sandbox Execution]
+    ├── Operational exception (e.g. column not found) ──► R_schema = -0.5
+    └── Clean execution without database errors ────────► R_schema = +0.2
+               │
+               ▼
+    [Tier 3: Test-Suite Semantic Mutation Correctness]
+    ├── Output matches reference across all K mutant DB states ──► R_TS = +1.0
+    └── Output differs on any mutant DB state ───────────────────► R_TS = 0.0
+               │
+               ▼
+    [Tier 4: Step Efficiency & Autonomous Recovery Bonus]
+    ├── Turn penalty: -0.05 * t
+    └── Recovery bonus: +0.3 (awarded if previous turn failed but current turn passes)
 ```
 
-1. **Tier 1: Syntactic Validity ($\mathcal{R}_{\text{syntax}} \in [-1.0, 0.0]$)**:  
-   Validates AST structure via SQLGlot. Malformed SQL or illegal tool calling yields $\mathcal{R}_{\text{syntax}} = -1.0$.
-2. **Tier 2: Schema Conformance ($\mathcal{R}_{\text{schema}} \in [-0.5, +0.2]$)**:  
-   Penalizes column or table hallucinations ($\mathcal{R} = -0.5$). Clean database execution without operational errors awards $+0.2$.
-3. **Tier 3: Test-Suite Semantic Correctness ($\mathcal{R}_{\text{TS}} \in [0.0, 1.0]$)**:  
-   Eliminates spurious output coincidences by executing both candidate and gold queries across $K=4$ mutated database states:
-   $$\mathcal{R}_{\text{TS}} = \prod_{k=0}^K \mathbb{I} \left( Q_{\text{gen}}(\mathcal{D}_k) \equiv Q_{\text{gold}}(\mathcal{D}_k) \right)$$
-4. **Tier 4: Efficiency & Recovery Bonus ($\mathcal{R}_{\text{efficiency}}$)**:  
-   Imposes a linear step penalty ($-0.05 \times t$) to incentivize parsimonious execution, while awarding $+0.3$ when a runtime error in turn $t-1$ is successfully diagnosed and resolved in turn $t$.
+### Detailed Reward Components:
+1. **Tier 1: Syntactic Validity ($R_{\text{syntax}} \in [-1.0, 0.0]$)**:  
+   Validated via SQLGlot AST parsing. Syntax errors or malformed JSON-RPC tool calls yield $R_{\text{syntax}} = -1.0$ and immediately terminate the rollout.
+2. **Tier 2: Schema Conformance ($R_{\text{schema}} \in [-0.5, +0.2]$)**:  
+   Executes trial queries against the SQLite sandbox. Execution errors (e.g., non-existent columns, type mismatches) receive $R_{\text{schema}} = -0.5$ with exception trace returned to the agent. Clean execution awards $+0.2$.
+3. **Tier 3: Test-Suite Semantic Mutation Equivalence ($R_{\text{TS}} \in [0.0, 1.0]$)**:  
+   Protects against coincidental output matches by executing both generated and gold queries across $K=4$ systematically mutated database states (inserting null boundaries, duplicating primary keys, inverting distributions):
+   
+   ![Test-Suite Mutation Equivalence Equation](figures/eq_test_suite_mutation.png)
+   
+   $$R_{\text{TS}} = \prod_{k=0}^K \mathbb{I}\left( Q_{\text{gen}}(\mathcal{D}_k) \equiv Q_{\text{gold}}(\mathcal{D}_k) \right)$$
+   
+4. **Tier 4: Step Efficiency & Error Recovery ($R_{\text{efficiency}}$)**:  
+   Imposes a step discount ($-0.05 \times t$) to discourage redundant looping. Crucially, a $+0.3$ recovery bonus is awarded when a query that failed execution in turn $t-1$ is successfully diagnosed and executed in turn $t$.
 
 ---
 
-## 5. Step-by-Step Reproducibility & Execution Protocol
+## 5. Step-by-Step Reproducible Execution Protocol
 
-All stages are fully automated via the repository [`Makefile`](file:///Users/christiancontrerascampana/Desktop/GitHub/text-to-sql/ask-the-database/Makefile) using standard `ARGS="..."` overrides.
+All stages are executed via standard [`Makefile`](file:///Users/christiancontrerascampana/Desktop/GitHub/text-to-sql/ask-the-database/Makefile) commands with explicit `ARGS="..."` overrides.
 
 ```mermaid
 flowchart TD
-    subgraph DataPrep ["Stage 1: Trajectory Collection"]
-        D1["Raw Spider Data"] --> S1["make collect-distillation"]
-        S1 --> D2["reviewed_trajectories.jsonl (500 episodes)"]
+    subgraph DataCollection ["Stage 1: Trajectory Distillation"]
+        D1["Spider Training Set"] --> S1["make collect-distillation"]
+        S1 --> D2["reviewed_trajectories_500.jsonl"]
     end
 
-    subgraph WarmStart ["Stage 2: SFT Warmup Training"]
+    subgraph WarmStartPhase ["Stage 2: SFT Warmup Training"]
         D3["train.jsonl (Single-Turn)"] --> S2A["make train-sft"]
-        S2A --> M1["models/mve/sft_baseline (Cond 2)"]
+        S2A --> M1["models/sft/baseline"]
         D2 --> S2B["make train-harness-zero"]
-        S2B --> M2["models/mve/harness_zero (Cond 4)"]
+        S2B --> M2["models/sft/harness_zero"]
     end
 
-    subgraph MicroHarness ["Stage 3: Zero-Budget Verification"]
+    subgraph SanityGate ["Stage 3: Rapid Micro-Harness Gate"]
         M1 --> ZB["make evaluate-zero-budget-mve"]
         M2 --> ZB
-        ZB --> G1["Decision Gate: Checkpoint Sanity"]
+        ZB --> G1{"Pass Sanity Gates?"}
+        G1 -->|Yes| RLVRPhase
     end
 
-    subgraph RLVR ["Stage 4: Multi-Turn GRPO RLVR"]
+    subgraph RLVRPhase ["Stage 4: Multi-Turn GRPO RLVR"]
         M1 --> R1["make train-grpo (Run A)"]
         M2 --> R2["make train-grpo (Run B)"]
         R1 --> P1["models/rlvr/baseline_grpo"]
         R2 --> P2["models/rlvr/harness_zero_grpo"]
     end
 
-    subgraph Evaluation ["Stage 5: Comparative Evaluation"]
+    subgraph FinalEval ["Stage 5: Evaluation & Reporting"]
         P1 --> E1["make evaluate"]
         P2 --> E1
         P1 --> CMP["make compare-rlvr"]
@@ -281,19 +284,19 @@ make collect-distillation ARGS="--raw-spider data/raw/spider_data/train_spider.j
   --metrics-output data/distillation/collection_metrics_500.json"
 ```
 
-*Verification Smoke Test*: Run `make collect-distillation ARGS="--dry-run"` to ensure database connections and review invariants operate without errors.
+*Verification Smoke Test*: Run `make collect-distillation ARGS="--dry-run"` to ensure SQLite catalogs and procedural review rules execute cleanly without allocating cluster compute.
 
 ---
 
-### Step 2: Train SFT Warm-Start Checkpoints
+### Step 2: Train Supervised Warm-Start Policies
 
-#### 2A. Train Condition 2 (Conventional Single-Turn SFT Baseline)
-Trained on standard Spider gold query pairs where the prompt includes full schema DDL:
+#### 2A. Train Conventional Single-Turn SFT Baseline
+Trained on standard Spider gold query pairs where the user prompt contains the question and full database schema DDL:
 
 ```bash
 make train-sft ARGS="model=qwen2_5_coder_1_5b \
   training.dataset_path=data/processed/train.jsonl \
-  training.output_dir=models/mve/sft_baseline \
+  training.output_dir=models/sft/baseline \
   training.num_train_epochs=2 \
   training.per_device_train_batch_size=4 \
   training.gradient_accumulation_steps=2 \
@@ -301,13 +304,13 @@ make train-sft ARGS="model=qwen2_5_coder_1_5b \
   training.report_to=wandb"
 ```
 
-#### 2B. Train Condition 4 (Harness-Zero Multi-Turn Distilled SFT)
-Trained on the 500 multi-turn trajectories with full tool loops (`inspect_schema`, `execute_sql`, `final_answer`):
+#### 2B. Train Harness-Zero Multi-Turn Distilled Policy
+Trained on the 500 multi-turn trajectories preserving complete conversational tool turns (`inspect_schema`, `sample_data`, `execute_sql`, `final_answer`):
 
 ```bash
 make train-harness-zero ARGS="model=qwen2_5_coder_1_5b \
   training.dataset_path=data/distillation/reviewed_trajectories_500.jsonl \
-  training.output_dir=models/mve/harness_zero \
+  training.output_dir=models/sft/harness_zero \
   training.num_train_epochs=2 \
   training.per_device_train_batch_size=2 \
   training.gradient_accumulation_steps=4 \
@@ -318,28 +321,28 @@ make train-harness-zero ARGS="model=qwen2_5_coder_1_5b \
 
 ---
 
-### Step 3: Intermediate Checkpoint Verification (Zero-Budget Micro-Harness)
-Before committing 24+ hours of GPU cluster time to RLVR, adjudicate both SFT checkpoints using the Pillar 4 Zero-Budget Micro-Harness:
+### Step 3: Checkpoint Sanity Validation (In-Memory Micro-Harness)
+Before committing 24+ hours of GPU cluster time to RLVR, validate both SFT checkpoints using the in-memory Zero-Budget Micro-Harness:
 
 ```bash
-# Evaluate Condition 2 Checkpoint
-make evaluate-zero-budget-mve ARGS="--checkpoint models/mve/sft_baseline \
-  --output results/zb_mve_cond2.json"
+# Validate Single-Turn Baseline Checkpoint
+make evaluate-zero-budget-mve ARGS="--checkpoint models/sft/baseline \
+  --output results/micro_eval_baseline.json"
 
-# Evaluate Condition 4 Checkpoint
-make evaluate-zero-budget-mve ARGS="--checkpoint models/mve/harness_zero \
-  --output results/zb_mve_cond4.json"
+# Validate Harness-Zero Distilled Checkpoint
+make evaluate-zero-budget-mve ARGS="--checkpoint models/sft/harness_zero \
+  --output results/micro_eval_harness_zero.json"
 ```
 
-*Sanity Pass Criteria*: Condition 4 must achieve $\ge 80.0\%$ schema pre-inspection and zero AST syntax crashes across the 35 in-memory fixtures.
+*Checkpoint Gate Criteria*: The Harness-Zero checkpoint must demonstrate $\ge 80.0\%$ schema pre-inspection and zero AST crashes across all 35 in-memory fixtures before proceeding to RLVR.
 
 ---
 
-### Step 4: Multi-Turn RLVR Policy Training (GRPO)
+### Step 4: Multi-Turn GRPO Reinforcement Learning
 
-#### 4A. Run A: Multi-Turn GRPO Starting from SFT Baseline
+#### 4A. Run A: GRPO Initialized from Single-Turn SFT Baseline
 ```bash
-make train-grpo ARGS="training.model_path=models/mve/sft_baseline \
+make train-grpo ARGS="training.model_path=models/sft/baseline \
   training.output_dir=models/rlvr/baseline_grpo \
   training.max_steps=250 \
   training.learning_rate=5e-6 \
@@ -351,9 +354,9 @@ make train-grpo ARGS="training.model_path=models/mve/sft_baseline \
   training.wandb.project=ask-the-database"
 ```
 
-#### 4B. Run B: Multi-Turn GRPO Starting from Harness-Zero SFT
+#### 4B. Run B: GRPO Initialized from Harness-Zero Distilled Policy
 ```bash
-make train-grpo ARGS="training.model_path=models/mve/harness_zero \
+make train-grpo ARGS="training.model_path=models/sft/harness_zero \
   training.output_dir=models/rlvr/harness_zero_grpo \
   training.max_steps=250 \
   training.learning_rate=5e-6 \
@@ -388,8 +391,8 @@ make evaluate ARGS="evaluation.model_path=models/rlvr/harness_zero_grpo \
   evaluation.summary_file=results/eval_rlvr_harness_zero/summary.json"
 ```
 
-#### 5B. Automated Sample Efficiency & Statistical Comparison
-Execute the automated comparative report generator to calculate milestone steps, cumulative reward AUC, and accuracy deltas:
+#### 5B. Automated Statistical Comparison & Report Generation
+Run the automated comparison tool to calculate convergence speedups, cumulative reward AUC, and test-suite accuracy deltas:
 
 ```bash
 make compare-rlvr ARGS="--run-a-dir models/rlvr/baseline_grpo \
@@ -404,35 +407,34 @@ make compare-rlvr ARGS="--run-a-dir models/rlvr/baseline_grpo \
 
 ## 6. Evaluation Protocol & Key Performance Indicators (KPIs)
 
-To prevent conflating execution coincidences with true semantic intent, we measure performance across five orthogonal metrics:
+To prevent conflating coincidental execution matches with semantic correctness, models are evaluated across five orthogonal dimensions:
 
 ```
 ┌─────────────────────────────────┬─────────────────────────────────────────────────────────────────────────┐
-│ Metric Name                     │ Operational Definition & Mathematical Formulation                       │
+│ Metric Name                     │ Operational Definition & Calculation Protocol                           │
 ├─────────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
-│ 1. Test-Suite Accuracy (TS)     │ Fraction of queries matching gold output across K mutant database states│
+│ 1. Test-Suite Accuracy (TS)     │ Percentage of queries matching gold output across all K mutant DB states│
 │                                 │ TS = (1/N) * sum_i prod_k [ Q_gen(D_k) == Q_gold(D_k) ]                │
 ├─────────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
-│ 2. Execution Accuracy (EX)      │ Fraction of queries matching gold output on the single unmutated DB     │
+│ 2. Execution Accuracy (EX)      │ Percentage of queries matching gold output on unmutated base databases  │
 │                                 │ EX = (1/N) * sum_i [ Q_gen(D_0) == Q_gold(D_0) ]                        │
 ├─────────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
-│ 3. Valid Action Rate (VA)       │ Percentage of model turns containing valid JSON-RPC / SQL syntax        │
+│ 3. Valid Action Rate (VA)       │ Percentage of model turns containing syntactically valid tool/SQL calls │
 │                                 │ VA = Total Valid Syntax Turns / Total Generated Turns                   │
 ├─────────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
-│ 4. Multi-Turn Recovery Rate(MRR)│ Percentage of episodes encountering an initial execution error (t=1)    │
-│                                 │ that autonomously achieve TS=1.0 by turn t <= 5                         │
+│ 4. Multi-Turn Recovery Rate(MRR)│ Percentage of episodes with an initial execution error (turn 1) that    │
+│                                 │ autonomously correct the error and achieve TS = 1.0 by turn t <= 5      │
 ├─────────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
 │ 5. Milestone Step (T_milestone) │ Number of RLVR gradient steps required to achieve mean reward R_mean > 0│
 ├─────────────────────────────────┼─────────────────────────────────────────────────────────────────────────┤
-│ 6. Cumulative Reward AUC        │ Integral of mean training reward across all 250 steps                   │
+│ 6. Cumulative Reward AUC        │ Area Under the Curve of mean rollout reward across all 250 steps        │
 │                                 │ AUC = sum_{step=1}^250 R_mean(step)                                     │
 └─────────────────────────────────┴─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Single-Turn vs. Multi-Turn Evaluation Regimes
-A critical scientific distinction is maintained throughout evaluation:
-* **Single-Turn Evaluation (`max_turns=1`)**: The model receives question + full schema DDL and emits SQL directly. This measures static semantic parsing capability.
-* **Multi-Turn Interactive Evaluation (`max_turns=5`)**: The model receives only the question and database name. It must issue `inspect_schema`, examine columns, execute trial queries, and output `final_answer`. This measures true autonomous agent capability in realistic zero-knowledge database environments.
+### Evaluation Regimes: Single-Turn vs. Multi-Turn
+* **Single-Turn Evaluation (`max_turns=1`)**: Prompt contains question and full database schema DDL; model emits SQL in one shot. Evaluates static semantic parsing capability.
+* **Interactive Multi-Turn Evaluation (`max_turns=5`)**: Prompt contains only natural language question and database identifier. Model must autonomously execute `inspect_schema`, verify column names, run test queries, and submit `final_answer`. Evaluates realistic agentic capability in zero-knowledge production databases.
 
 ---
 
@@ -440,12 +442,10 @@ A critical scientific distinction is maintained throughout evaluation:
 
 ### Projected Comparative Results
 
-Based on our Minimum Viable Experiment (MVE) findings and theoretical advantage calculations, we project the following empirical distribution:
-
-| Metric | Run A (SFT Baseline $\to$ GRPO) | Run B (Harness-Zero $\to$ GRPO) | Projected Delta ($\Delta$) | Statistical Significance Target |
+| Metric | Run A (Single-Turn Baseline Init) | Run B (Harness-Zero Distilled Init) | Projected Delta ($\Delta$) | Statistical Target |
 | :--- | :---: | :---: | :---: | :---: |
 | **Steps to Positive Reward ($R > 0$)** | 120–160 steps | **20–35 steps** | **$4.0\times$ faster convergence** | $p < 0.001$ |
-| **Reward @ Step 50** | $-0.45$ | **$+0.25$** | $+0.70$ advantage | $p < 0.001$ |
+| **Mean Reward @ Step 50** | $-0.45$ | **$+0.25$** | $+0.70$ advantage | $p < 0.001$ |
 | **Final Mean Reward (Step 250)** | $+0.15$ | **$+0.62$** | $+0.47$ advantage | $p < 0.01$ |
 | **Cumulative Reward AUC** | $-45.0$ | **$+95.0$** | **$+140.0$ AUC** | $p < 0.001$ |
 | **Spider Dev Test-Suite (TS)** | 53.5% | **61.2%** | **$+7.7\text{ pp}$** | $p < 0.01$ (Bootstrap $N=1000$) |
@@ -453,9 +453,7 @@ Based on our Minimum Viable Experiment (MVE) findings and theoretical advantage 
 | **Multi-Turn Recovery Rate (MRR)** | 21.5% | **42.5%** | **$+21.0\text{ pp}$ ($2.0\times$)** | $p < 0.001$ |
 | **Spider-Realistic TS** | 44.0% | **53.8%** | **$+9.8\text{ pp}$** | $p < 0.01$ |
 
-### Decision Gate Adjudication Matrix
-
-The experiment outcome will be adjudicated using a strict Go/No-Go decision framework:
+### Decision Gate Adjudication Framework
 
 ```
 ┌────────────────────────────────┬──────────────────────────┬──────────────────────────┬────────────────────────┐
@@ -471,13 +469,13 @@ The experiment outcome will be adjudicated using a strict Go/No-Go decision fram
 └────────────────────────────────┴──────────────────────────┴──────────────────────────┴────────────────────────┘
 ```
 
-* **Adjudication Rule**: If Gates 1, 2, and 4 achieve `GO`, the hypothesis is conclusively proven: *Harness-Zero multi-turn distillation is statistically superior to single-turn SFT as a warm-start policy for agentic database RLVR.*
+* **Adjudication Standard**: If Gates 1, 2, and 4 achieve `GO`, the core hypothesis is validated: *Harness-Zero multi-turn distillation provides a statistically superior foundation for multi-turn database RLVR compared to conventional single-turn SFT.*
 
 ---
 
 ## 8. Failure Mode Profiling via Diagnostic Traps
 
-Using the Pillar 4 Diagnostic Trap Profiler, every failed rollout across both runs will be classified into one of five mutually exclusive error categories:
+To explain the mechanistic differences between the two training trajectories, failed rollouts are classified into five diagnostic trap categories:
 
 ```
                           Diagnostic Trap Taxonomy
@@ -489,20 +487,20 @@ Column/Table     SQLite vs Postgres           Unconstrained   Improper handling
 non-existent     function mismatches          Cartesian mult. of 3-valued logic
 ```
 
-1. **Hallucinated Column/Table (`trap_schema_hallucination`)**: Query references identifiers absent from the SQLite `sqlite_master` catalog.
-2. **Dialect Drift (`trap_dialect_drift`)**: Query invokes non-SQLite keywords or constructs (e.g., `ILIKE`, `DATE_TRUNC`, `CONCAT`).
+1. **Hallucinated Column/Table (`trap_schema_hallucination`)**: Query references identifiers absent from the database catalog.
+2. **Dialect Drift (`trap_dialect_drift`)**: Query invokes non-SQLite keywords (e.g., `ILIKE`, `DATE_TRUNC`, `CONCAT`).
 3. **Join Fanout / Unconstrained Cartesian (`trap_join_fanout`)**: Query omits `ON` or `USING` clauses or joins non-keyed tables, causing combinatorial cardinality explosions.
 4. **Three-Valued Logic / Null Boundary (`trap_null_boundary`)**: Query uses `= NULL` instead of `IS NULL`, or misplaces filters across `LEFT JOIN` boundaries.
-5. **Aggregation without Grouping (`trap_agg_no_group`)**: Query combines scalar projections with aggregate functions (`SELECT name, MAX(salary)`) without explicit `GROUP BY`.
+5. **Aggregation without Grouping (`trap_agg_no_group`)**: Query combines scalar projections with aggregate functions without explicit `GROUP BY`.
 
-### Anticipated Trap Distribution Analysis
-We anticipate that Run A will remain trapped in `trap_schema_hallucination` and `trap_dialect_drift` for the first 100 steps because single-turn SFT never taught the model how to inspect local dialect catalogs. Conversely, Run B will eliminate schema hallucinations within 25 steps, allowing GRPO gradients to optimize subtle relational join logic and boundary filters.
+### Mechanistic Analysis
+We hypothesize that Run A will remain trapped in `trap_schema_hallucination` and `trap_dialect_drift` across early training steps because single-turn SFT never equipped the model with active schema discovery habits. Conversely, Run B's internalized exploration prior eliminates column hallucinations within 25 steps, allowing GRPO policy gradients to focus directly on optimizing multi-table join logic, aggregate boundaries, and error recovery.
 
 ---
 
-## 9. Post-Hoc Extension: Compound Architecture Verification (Pillar 3 Integration)
+## 9. Post-Hoc Extension: Compound Architecture Verification
 
-While test-time compound verification is ablated during the core training experiment, a natural follow-up investigation evaluates how both trained policies interact with the **Pillar 3 Continuous Logit Verifier**:
+While test-time compound verification is ablated during the core training experiment to isolate generator policy gains, a natural extension evaluates both trained policies when paired with continuous logit verification at inference time:
 
 ```
                        Post-Hoc Compound Architecture
@@ -513,7 +511,7 @@ While test-time compound verification is ablated during the core training experi
    Sample G=5 Candidate Queries (Temperature = 0.7)
                  │
                  ▼
-   [Pillar 3: LLM-as-a-Verifier Tournament]
+   [LLM-as-a-Verifier Tournament]
    • Continuous logit scoring over normalized anchor tokens
    • Probabilistic Pivot elimination (70% comparison reduction)
                  │
@@ -522,36 +520,21 @@ While test-time compound verification is ablated during the core training experi
 ```
 
 ### Research Question for Extension:
-*Does test-time verification compensate for a poorly initialized generator (Run A), or does verification compound exclusively when paired with a procedurally grounded generator (Run B)?*
+*Does test-time verification compensate for an ungrounded generator policy (Run A), or does verification compound exclusively when paired with a procedurally grounded generator policy (Run B)?*
 
-* **Theoretical Prediction**: As observed in Pillar 3, a verifier cannot fix candidates if all 5 rollouts hallucinate non-existent columns. We predict the Compound Architecture will yield a modest $+2.5\text{ pp}$ boost over Run A (reaching ~56.0% TS), but an additive $+3.5\text{ pp}$ boost over Run B (reaching **~64.7% TS**), definitively demonstrating that **compound verification requires an exploratory, procedurally grounded generator**.
+* **Theoretical Prediction**: A test-time verifier cannot select a correct query if all candidates in the generated pool hallucinate non-existent columns. We predict that compound verification will yield only a modest $+2.5\text{ pp}$ boost over Run A (reaching ~56.0% TS), but an additive $+3.5\text{ pp}$ boost over Run B (reaching **~64.7% TS**), demonstrating that **test-time verification requires an exploratory, procedurally grounded generator to realize its potential**.
 
 ---
 
-## 10. Summary & Checklist for Experiment Execution
+## 10. Execution Checklist
 
-### Phase 1: Environment & Pre-requisites
-- [ ] Verify isolated virtual environment (`export PYTHONNOUSERSITE=1`).
-- [ ] Confirm Weights & Biases API credentials (`WANDB_PROJECT=ask-the-database`).
-- [ ] Confirm extracted SQLite database catalog paths in `data/databases/`.
-- [ ] Execute `make test` to ensure all 171 core repository unit tests pass.
-
-### Phase 2: Distillation & Warm-Start Training
-- [ ] Collect 500 stratified teacher-reviewed trajectories (`make collect-distillation`).
-- [ ] Train Condition 2 Baseline SFT (`make train-sft`).
-- [ ] Train Condition 4 Harness-Zero SFT (`make train-harness-zero`).
-- [ ] Validate both checkpoints with Zero-Budget Micro-Harness (`make evaluate-zero-budget-mve`).
-
-### Phase 3: Downstream Multi-Turn GRPO RLVR
-- [ ] Execute Run A: 250 steps starting from Condition 2 (`make train-grpo`).
-- [ ] Execute Run B: 250 steps starting from Condition 4 (`make train-grpo`).
-- [ ] Monitor live telemetry in W&B (`mean_reward`, `std_reward`, `advantage_mean`).
-
-### Phase 4: Final Evaluation & Publication
-- [ ] Run full 1,034-sample evaluation on Spider Dev and Spider-Realistic (`make evaluate`).
-- [ ] Generate comparative markdown efficiency report (`make compare-rlvr`).
-- [ ] Check decision gates against adjudication criteria (Section 7).
-- [ ] Package final models and update Hugging Face cards (`make generate-hf-cards`).
+- [ ] **Environment Setup**: Ensure isolated virtualenv (`export PYTHONNOUSERSITE=1`), Weights & Biases configuration (`WANDB_PROJECT=ask-the-database`), and passing test suite (`make test`).
+- [ ] **Corpus Distillation**: Generate 500 reviewed trajectories (`make collect-distillation`).
+- [ ] **Warm-Start Training**: Train Single-Turn SFT Baseline (`make train-sft`) and Harness-Zero Distilled Policy (`make train-harness-zero`).
+- [ ] **Micro-Harness Validation**: Validate checkpoints on in-memory fixtures (`make evaluate-zero-budget-mve`).
+- [ ] **Multi-Turn GRPO RLVR**: Execute Run A and Run B for 250 steps (`make train-grpo`).
+- [ ] **Evaluation & Reporting**: Run full Spider benchmark evaluations (`make evaluate`) and generate comparative efficiency analysis (`make compare-rlvr`).
+- [ ] **Gate Adjudication**: Assess results against Section 7 decision gate criteria.
 
 ---
 
