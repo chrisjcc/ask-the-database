@@ -156,6 +156,92 @@ make collect-distillation ARGS="--dry-run"
     make collect-distillation ARGS="--teacher-backend litellm --teacher-model gemini/gemini-2.0-flash"
     ```
 
+* **Student Policy Options:**
+  - **Offline Mock Policy (`MockStudentPolicy`, Default):**
+    Uses a simulation student that reproduces realistic exploration failures (premature query emission, unsampled categoricals), allowing $\mathcal{K}_{\text{SQL}}$ to intercept and record canonical 4–9 turn repaired trajectories at **zero GPU compute and zero API token cost**.
+    ```bash
+    make collect-distillation ARGS="--student-backend mock"
+    ```
+  - **Online Student Policy (`LiteLLMStudentPolicy`):**
+    Uses a live neural language model (e.g., `Qwen/Qwen2.5-Coder-7B-Instruct` or Ollama/vLLM) that executes interactive rollouts in the database environment; whenever the student commits procedural violations or exploratory mistakes, $\mathcal{K}_{\text{SQL}}$ dynamically intercepts and repairs the actions in real time, recording genuine on-policy trajectories.
+
+---
+
+#### How the Online Loop Works Step-by-Step
+
+In the online mode, a live neural model actively interacts with the database environment while the reference harness ($\mathcal{K}_{\text{SQL}}$) acts as an active procedural guardrail:
+
+```
+                    Online Harness-Zero Distillation Loop
+                    
+   User Question Prompt (x)
+             │
+             ▼
+   Student LLM (e.g. Qwen2.5-Coder)
+             │
+             ├── Emits raw completion: e.g. <final_answer>SELECT * FROM accounts</final_answer>
+             ▼
+   [Harness Reviewer: K_SQL]
+             │
+             ├── Intercepts proposal before database execution
+             ├── Evaluates: Has the student inspected 'accounts'? ──► NO!
+             ├── Issues: decision='REPLACE'
+             └── Injects: <tool name="inspect_schema">["accounts"]</tool>
+             ▼
+   [Database Sandbox (SkyRLSQLEnvironment)]
+             │
+             ├── Executes inspect_schema(["accounts"])
+             └── Returns schema DDL observation o_1
+             ▼
+   Student LLM Turn 2
+             │
+             ├── Receives observation o_1 in its conversational context
+             ├── Emits next action based on real schema
+             └── ...
+```
+
+1. **Step 1: Student Proposal**: The live student LLM inspects the question and dialogue history, autoregressively generating its proposed next action (e.g. attempting SQL execution or final answer).
+2. **Step 2: Real-Time Interception**: Before the action reaches the database, $\mathcal{K}_{\text{SQL}}$ evaluates the proposal against the 4 procedural invariants without oracle gold query leakage.
+3. **Step 3: Corrective Replacement**: If an invariant is violated (e.g. uninspected table), $\mathcal{K}_{\text{SQL}}$ overrides the proposal with the required exploratory tool call (`inspect_schema` or `sample_data`).
+4. **Step 4: Sandbox State Transition**: The environment executes the verified tool action and returns real database feedback (DDL, row samples, or error traces).
+5. **Step 5: Interactive Rollout Progression**: The student continues to the next turn with updated observations until reaching verified final answer submission.
+
+---
+
+#### How to Run the Online Version via CLI
+
+Execute trajectory collection with `--student-backend litellm` and select your student model (local vLLM, Ollama, or hosted API):
+
+```bash
+# Standard Makefile invocation (Online collection via LiteLLM / Ollama):
+make collect-distillation ARGS="--student-backend litellm --student-model ollama/qwen2.5-coder:7b --teacher-backend rule --output data/distillation/reviewed_trajectories_online.jsonl"
+
+# Direct CLI equivalent with local vLLM / OpenAI-compatible endpoint:
+python3 scripts/collect_reviewed_trajectories.py \
+  --student-backend litellm \
+  --student-model "openai/Qwen/Qwen2.5-Coder-7B-Instruct" \
+  --teacher-backend rule \
+  --output data/distillation/reviewed_trajectories_online.jsonl \
+  --metrics-output data/distillation/collection_metrics_online.json
+```
+
+---
+
+#### Comparison: Offline Mock vs. Online Real Model
+
+| Feature | Offline Mock Policy (`MockStudentPolicy`) | Online Student Policy (`LiteLLMStudentPolicy`) |
+| :--- | :--- | :--- |
+| **Default Setting** | **Yes (`--student-backend mock`)** | No (`--student-backend litellm`) |
+| **Model In-the-Loop** | Deterministic Python simulator | Live LLM (e.g. `Qwen/Qwen2.5-Coder-7B-Instruct`) |
+| **Compute / Token Cost** | **Zero GPU compute, 0 API tokens** | Requires GPU compute or LLM API calls |
+| **Execution Latency** | Sub-minute generation for 500 trajectories | Bound by sequential LLM generation latency |
+| **Trajectory Realism** | Follows canonical 4-turn structural progression | Captures model's idiosyncratic reasoning and errors |
+| **Distributional Fit** | Clean demonstration data for warm-start | Strict on-policy distribution matching model weights |
+
+> [!NOTE]
+> **On-Policy Literature Rationale (Ye et al., arXiv:2609.24974):**  
+> In the literature, the online version is used when you want the distilled training set to be **strictly on-policy** to the student's exact failure distribution before fine-tuning. The offline mock version provides the identical structural schema-inspection habits at **zero computational cost**.
+
 #### Step 2: Fine-Tune on Reviewed Trajectories
 
 ```bash

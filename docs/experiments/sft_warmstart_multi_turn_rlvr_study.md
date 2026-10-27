@@ -264,11 +264,16 @@ flowchart TD
 ```
 
 ### Step 1: Collect Balanced 500-Trajectory Distillation Corpus
-Collect 500 teacher-reviewed trajectories using the deterministic offline rule engine (K_SQL), stratified across complex relational schemas (150 medium, 200 hard, 150 extra-hard):
+Collect 500 teacher-reviewed trajectories using the deterministic review harness (K_SQL), stratified across complex relational schemas (150 medium, 200 hard, 150 extra-hard).
+
+#### Default Execution: Offline Mock Policy (`MockStudentPolicy`)
+The experimental study defaults to the **Offline Mock Policy** (`--student-backend mock`). This uses a deterministic simulation student that reproduces realistic exploration failures (premature queries, unsampled categoricals), allowing K_SQL to intercept and produce canonical 4–9 turn repaired trajectories at **zero GPU compute and zero API token cost**:
 
 ```bash
 make collect-distillation ARGS="--raw-spider data/raw/spider_data/train_spider.json \
   --databases-dir data/databases \
+  --student-backend mock \
+  --teacher-backend rule \
   --n-medium 150 \
   --n-hard 200 \
   --n-extra 150 \
@@ -277,6 +282,24 @@ make collect-distillation ARGS="--raw-spider data/raw/spider_data/train_spider.j
 ```
 
 *Verification Smoke Test*: Run `make collect-distillation ARGS="--dry-run"` to ensure SQLite catalogs and procedural review rules execute cleanly without allocating cluster compute.
+
+#### Alternative Execution: Online Live Student Policy (`LiteLLMStudentPolicy`)
+For experiments requiring **strictly on-policy** trajectory collection matching the student model's exact parameter tendencies before fine-tuning (Ye et al., arXiv:2609.24974), execute with a live neural student model (e.g., local Ollama, vLLM, or hosted API):
+
+```bash
+# Example: Online collection using a real Qwen 2.5 Coder student model
+python3 scripts/collect_reviewed_trajectories.py \
+  --raw-spider data/raw/spider_data/train_spider.json \
+  --databases-dir data/databases \
+  --student-backend litellm \
+  --student-model "ollama/qwen2.5-coder:7b" \
+  --teacher-backend rule \
+  --n-medium 150 \
+  --n-hard 200 \
+  --n-extra 150 \
+  --output data/distillation/reviewed_trajectories_500_online.jsonl \
+  --metrics-output data/distillation/collection_metrics_500_online.json
+```
 
 ---
 
