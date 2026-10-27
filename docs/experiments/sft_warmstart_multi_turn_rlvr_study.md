@@ -27,10 +27,10 @@ This document specifies an empirical study addressing the central question:
     │ (Single-Turn Gold Demonstration)    │      │ Multi-Turn GRPO Policy        │
     └─────────────────────────────────────┘      └───────────────────────────────┘
                                                                 VS
-    ┌─────────────────────────────────────┐      ┌───────────────────────────────┐
+    ┌─────────────────────────────────────┐      ┌────────────────────────────-───┐
     │ Condition 4: Harness-Zero SFT       │ ───> │ Run B: Harness-Zero-Warmstarted│
-    │ (Multi-Turn Distilled Trajectories) │      │ Multi-Turn GRPO Policy        │
-    └─────────────────────────────────────┘      └───────────────────────────────┘
+    │ (Multi-Turn Distilled Trajectories) │      │ Multi-Turn GRPO Policy         │
+    └─────────────────────────────────────┘      └──────────────────────────────-─┘
 ```
 
 ---
