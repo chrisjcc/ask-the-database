@@ -62,42 +62,38 @@ In real-world databases containing dozens of tables and hundreds of attributes, 
 
 While runtime prompt harnesses improve accuracy, they impose a severe latency penalty: a 5-turn interactive loop requires 5 sequential LLM round-trips, producing interactive latencies of 4 to 8 seconds. 
 
-**Harness-Zero** (Ye et al., arXiv:2609.24974) resolves this trade-off by distilling agentic discipline directly into neural weights. Rather than orchestrating prompt wrappers at inference time, a reference procedural reviewer $\mathcal{K}_{\text{SQL}}$ monitors student trajectories during an offline data collection phase and enforces four deterministic procedural invariants:
+**Harness-Zero** (Ye et al., arXiv:2609.24974) resolves this trade-off by distilling agentic discipline directly into neural weights. Rather than orchestrating prompt wrappers at inference time, a reference procedural reviewer K_SQL monitors student trajectories during an offline data collection phase and enforces four deterministic procedural invariants:
 1. `RequireSchemaInspection`: Intercepts premature SQL emission and mandates catalog inspection.
 2. `RequireRowSampling`: Enforces categorical value and formatting checks against raw database tables.
 3. `EnforceDryRunBeforeFinish`: Mandates execution validation before outputting final answers.
 4. `DiagnosticRecovery`: Catches operational exceptions and forces targeted schema re-inspection.
 
-Crucially, $\mathcal{K}_{\text{SQL}}$ operates with **zero gold query leakage**: it inspects only database catalogs and execution exceptions, preventing the student from memorizing oracle shortcuts. Once the student policy is fine-tuned on these repaired trajectories, the external reviewer is discarded, delivering multi-turn exploratory discipline at single-turn inference latency.
+Crucially, K_SQL operates with **zero gold query leakage**: it inspects only database catalogs and execution exceptions, preventing the student from memorizing oracle shortcuts. Once the student policy is fine-tuned on these repaired trajectories, the external reviewer is discarded, delivering multi-turn exploratory discipline at single-turn inference latency.
 
 ### 1.2 The Zero-Variance Cold-Start Collapse in Multi-Turn RLVR
 When training multi-turn agents with Group Relative Policy Optimization (GRPO), policy updates depend on normalized intra-group advantage:
 
 ![Group Advantage Normalization Equation](figures/eq_advantage_normalization.png)
 
-$$\hat{A}_i = \frac{R_i - \text{mean}(\{R_j\}_{j=1}^G)}{\text{std}(\{R_j\}_{j=1}^G) + \epsilon_{\text{adv}}}$$
-
-If a model trained exclusively on single-turn demonstration pairs is deployed in an interactive environment without schema DDL in the prompt, its probability of emitting valid tool syntax is near zero. Consequently, across all $G$ parallel rollouts sampled for a given prompt, **every rollout fails simultaneously** on unseen schemas ($R_1 = R_2 = \dots = R_G = -1.0$).
+If a model trained exclusively on single-turn demonstration pairs is deployed in an interactive environment without schema DDL in the prompt, its probability of emitting valid tool syntax is near zero. Consequently, across all G parallel rollouts sampled for a given prompt, **every rollout fails simultaneously** on unseen schemas (R₁ = R₂ = ... = R_G = -1.0).
 
 When every rollout in the group fails:
 
 ![Cold-Start Gradient Collapse Equation](figures/eq_cold_start_collapse.png)
 
-$$\text{std}(\{R_j\}_{j=1}^G) = 0 \implies \hat{A}_i = 0 \implies \nabla_\theta \mathcal{J}_{\text{GRPO}}(\theta) \approx \mathbf{0}$$
-
 The group advantage vanishes, the policy gradient collapses to zero, and the model enters an extended exploration plateau where it receives no directional reinforcement signal.
 
-Warm-starting from a Harness-Zero distilled checkpoint guarantees that the agent enters RLVR with established tool-calling and catalog-inspection priors ($P(\text{inspect\_schema}) \ge 84.6\%$). At least one rollout per group succeeds in querying the catalog, guaranteeing divergent intra-group returns ($\text{std}(R_g) > 0.45$) and active policy gradients from Step 1.
+Warm-starting from a Harness-Zero distilled checkpoint guarantees that the agent enters RLVR with established tool-calling and catalog-inspection priors (P(inspect_schema) ≥ 84.6%). At least one rollout per group succeeds in querying the catalog, guaranteeing divergent intra-group returns (std(R_g) > 0.45) and active policy gradients from Step 1.
 
 ### 1.3 Isolating Policy Learning from Test-Time Verification
-In production architectures, compound verification (such as LLM-as-a-Verifier with Best-of-$N$ candidate tournament selection) provides powerful orthogonal gains. However, a verifier is fundamentally a re-ranker: it cannot generate valid SQL if all candidates in the generated pool hallucinate non-existent columns.
+In production architectures, compound verification (such as LLM-as-a-Verifier with Best-of-N candidate tournament selection) provides powerful orthogonal gains. However, a verifier is fundamentally a re-ranker: it cannot generate valid SQL if all candidates in the generated pool hallucinate non-existent columns.
 
 To maintain scientific rigor in this study, **test-time verifiers are held fixed and excluded from the core training and evaluation loops**. This isolates the generator's intrinsic policy improvement. A dedicated post-hoc extension (Section 8) then evaluates how both trained policies interact when paired with compound verification at inference time.
 
 ### 1.4 High-Frequency Checkpoint Telemetry via In-Memory Micro-Harnesses
 Evaluating checkpoints across the full 1,034 queries of the Spider benchmark requires 3 to 6 minutes of GPU cluster compute over disk-bound SQLite files, making frequent checkpoint evaluation during RLVR training intractable.
 
-To monitor policy health and detect failure modes during training, we integrate an in-memory **Zero-Budget Evaluation Micro-Harness**. Executing 35 dual-state in-memory SQLite fixtures (`:memory:`) in **126.8 ms**, it provides a **$\rho = 1.000$ Spearman rank correlation** with full Spider Dev benchmark results. The micro-harness runs every 25 RL training steps, classifying failed rollouts into specific diagnostic traps (column hallucinations, dialect drift, join fanouts) to provide granular failure attribution in real time.
+To monitor policy health and detect failure modes during training, we integrate an in-memory **Zero-Budget Evaluation Micro-Harness**. Executing 35 dual-state in-memory SQLite fixtures (`:memory:`) in **126.8 ms**, it provides a **ρ = 1.000 Spearman rank correlation** with full Spider Dev benchmark results. The micro-harness runs every 25 RL training steps, classifying failed rollouts into specific diagnostic traps (column hallucinations, dialect drift, join fanouts) to provide granular failure attribution in real time.
 
 ---
 
@@ -108,31 +104,31 @@ To monitor policy health and detect failure modes during training, we integrate 
 
 ### Mathematical Formulation of Policy Optimization
 
-In Group Relative Policy Optimization (GRPO), policy parameters $\theta$ are updated over groups of $G$ rollouts sampled for each question prompt $q$:
+In Group Relative Policy Optimization (GRPO), policy parameters θ are updated over groups of G rollouts sampled for each question prompt q:
 
 ![GRPO Objective Equation](figures/eq_grpo_objective.png)
 
-$$\mathcal{J}_{\text{GRPO}}(\theta) = \mathbb{E}_{q \sim \mathcal{D}, \{o_i\}_{i=1}^G \sim \pi_{\theta_{\text{old}}}(q)} \left[ \frac{1}{G} \sum_{i=1}^G \frac{1}{|o_i|} \sum_{t=1}^{|o_i|} \min\left(r_{i,t}(\theta)\hat{A}_i, \text{clip}(r_{i,t}(\theta), 1-\epsilon, 1+\epsilon)\hat{A}_i\right) - \beta D_{\text{KL}}(\pi_\theta \parallel \pi_{\text{ref}}) \right]$$
-
-where $r_{i,t}(\theta) = \frac{\pi_\theta(o_{i,t} \mid q, o_{i,<t})}{\pi_{\theta_{\text{old}}}(o_{i,t} \mid q, o_{i,<t})}$ represents the per-token probability ratio, $\beta$ is the KL penalty coefficient against the reference policy, and $\hat{A}_i$ is the normalized intra-group advantage.
+where r_{i,t}(θ) = π_θ(o_{i,t} | q, o_{i,<t}) / π_{θ_old}(o_{i,t} | q, o_{i,<t}) represents the per-token probability ratio, β is the KL penalty coefficient against the reference policy, and Â_i is the normalized intra-group advantage.
 
 ### Formal Empirical Hypotheses
 
+![Formal Empirical Hypotheses](figures/eq_formal_hypotheses.png)
+
 * **Hypothesis 1 (Sample Efficiency & Convergence Speed)**:  
-  Run B (Harness-Zero warm-start) will achieve a positive mean training reward ($R_{\text{mean}} > 0.0$) in at least $3.0\times$ fewer gradient steps than Run A (single-turn baseline warm-start):
-  $$T_{\text{milestone}}(\text{Run B}) \le \frac{1}{3} \times T_{\text{milestone}}(\text{Run A})$$
+  Run B (Harness-Zero warm-start) will achieve a positive mean training reward (`R_mean > 0.0`) in at least 3.0× fewer gradient steps than Run A (single-turn baseline warm-start):  
+  `T_milestone(Run B) ≤ (1/3) × T_milestone(Run A)`
 
 * **Hypothesis 2 (Cumulative Reward Area Under the Curve)**:  
-  Over 250 RL training steps, the cumulative reward Area Under the Curve (AUC) for Run B will surpass Run A by at least $+80.0$:
-  $$\text{AUC}_{0 \to 250}(R_{\text{Run B}}) - \text{AUC}_{0 \to 250}(R_{\text{Run A}}) \ge +80.0$$
+  Over 250 RL training steps, the cumulative reward Area Under the Curve (AUC) for Run B will surpass Run A by at least +80.0:  
+  `AUC(Run B, 0→250) - AUC(Run A, 0→250) ≥ +80.0`
 
 * **Hypothesis 3 (Asymptotic Test-Suite Accuracy)**:  
-  After 250 gradient steps of multi-turn GRPO, the resulting policy from Run B will achieve at least a **+5.0 percentage point (pp)** improvement in Test-Suite Accuracy (TS) on held-out Spider Dev compared to Run A:
-  $$\text{TS}(\pi_{\text{Run B}}) - \text{TS}(\pi_{\text{Run A}}) \ge +5.0\text{ pp}$$
+  After 250 gradient steps of multi-turn GRPO, the resulting policy from Run B will achieve at least a **+5.0 percentage point (pp)** improvement in Test-Suite Accuracy (TS) on held-out Spider Dev compared to Run A:  
+  `TS(Policy B) - TS(Policy A) ≥ +5.0 pp`
 
 * **Hypothesis 4 (Multi-Turn Error Recovery Rate)**:  
-  Run B will exhibit a significantly higher Multi-Turn Recovery Rate (MRR)—the proportion of episodes that encounter an execution error in early turns but autonomously diagnose and resolve it before final answer submission:
-  $$\text{MRR}(\pi_{\text{Run B}}) \ge 35.0\% \quad \text{vs.} \quad \text{MRR}(\pi_{\text{Run A}}) \le 22.0\%$$
+  Run B will exhibit a significantly higher Multi-Turn Recovery Rate (MRR)—the proportion of episodes that encounter an execution error in early turns but autonomously diagnose and resolve it before final answer submission:  
+  `MRR(Policy B) ≥ 35.0%   vs.   MRR(Policy A) ≤ 22.0%`
 
 ---
 
@@ -166,14 +162,14 @@ To ensure that all observed empirical variance stems exclusively from the choice
 | Parameter Category | Configuration Parameter | Setting / Value |
 | :--- | :--- | :--- |
 | **Foundation Model** | Base Architecture | `Qwen/Qwen2.5-Coder-1.5B-Instruct` |
-| **PEFT / LoRA** | Rank ($r$), Alpha ($\alpha$), Dropout | $r=16, \alpha=32$, dropout=0.05 |
+| **PEFT / LoRA** | Rank (r), Alpha (α), Dropout | r = 16, α = 32, dropout = 0.05 |
 | **LoRA Target Modules** | Linear Projections | `q_proj, k_proj, v_proj, o_proj` |
 | **RL Algorithm** | Policy Optimization Method | Multi-Turn GRPO ([`SkyRLSQLEnvironment`](file:///Users/christiancontrerascampana/Desktop/GitHub/text-to-sql/ask-the-database/src/ask_the_database/training/environments/skyrl_sql.py)) |
-| **Group Size ($G$)** | Rollouts per Prompt | 4 parallel rollouts |
-| **Turn Budget ($T$)** | Maximum Interactive Turns | 5 turns per episode |
-| **Discount Factor ($\gamma$)** | Temporal Discounting | 0.95 |
-| **KL Penalty ($\beta$)** | Divergence Regularization | 0.04 |
-| **Optimization** | Optimizer & Learning Rate | AdamW, $\eta = 5\times 10^{-6}$, cosine schedule, 10% warmup |
+| **Group Size (G)** | Rollouts per Prompt | 4 parallel rollouts |
+| **Turn Budget (T)** | Maximum Interactive Turns | 5 turns per episode |
+| **Discount Factor (γ)** | Temporal Discounting | 0.95 |
+| **KL Penalty (β)** | Divergence Regularization | 0.04 |
+| **Optimization** | Optimizer & Learning Rate | AdamW, η = 5 × 10⁻⁶, cosine schedule, 10% warmup |
 | **Batching** | Per-Device Train Batch Size | 1 prompt (4 rollouts) with 8 gradient accumulation steps |
 | **Hardware & Seeds** | Compute & RNG Initialization | NVIDIA A100 GPU, PyTorch & CUDA `seed = 42` |
 
@@ -184,8 +180,6 @@ To ensure that all observed empirical variance stems exclusively from the choice
 To eliminate reward hacking while rewarding genuine relational accuracy and autonomous error recovery, the environment evaluates candidate actions against a 4-tier verifiable rubric:
 
 ![Hierarchical Reward Rubric Equation](figures/eq_reward_rubric.png)
-
-$$R_{\text{total}} = R_{\text{syntax}} + R_{\text{schema}} + R_{\text{TS}} + R_{\text{efficiency}}$$
 
 ```
                        The 4-Tier Verifiable Reward Flow
@@ -214,19 +208,17 @@ $$R_{\text{total}} = R_{\text{syntax}} + R_{\text{schema}} + R_{\text{TS}} + R_{
 ```
 
 ### Detailed Reward Components:
-1. **Tier 1: Syntactic Validity ($R_{\text{syntax}} \in [-1.0, 0.0]$)**:  
-   Validated via SQLGlot AST parsing. Syntax errors or malformed JSON-RPC tool calls yield $R_{\text{syntax}} = -1.0$ and immediately terminate the rollout.
-2. **Tier 2: Schema Conformance ($R_{\text{schema}} \in [-0.5, +0.2]$)**:  
-   Executes trial queries against the SQLite sandbox. Execution errors (e.g., non-existent columns, type mismatches) receive $R_{\text{schema}} = -0.5$ with exception trace returned to the agent. Clean execution awards $+0.2$.
-3. **Tier 3: Test-Suite Semantic Mutation Equivalence ($R_{\text{TS}} \in [0.0, 1.0]$)**:  
-   Protects against coincidental output matches by executing both generated and gold queries across $K=4$ systematically mutated database states (inserting null boundaries, duplicating primary keys, inverting distributions):
+1. **Tier 1: Syntactic Validity (R_syntax ∈ [-1.0, 0.0])**:  
+   Validated via SQLGlot AST parsing. Syntax errors or malformed JSON-RPC tool calls yield R_syntax = -1.0 and immediately terminate the rollout.
+2. **Tier 2: Schema Conformance (R_schema ∈ [-0.5, +0.2])**:  
+   Executes trial queries against the SQLite sandbox. Execution errors (e.g., non-existent columns, type mismatches) receive R_schema = -0.5 with exception trace returned to the agent. Clean execution awards +0.2.
+3. **Tier 3: Test-Suite Semantic Mutation Equivalence (R_TS ∈ [0.0, 1.0])**:  
+   Protects against coincidental output matches by executing both generated and gold queries across K = 4 systematically mutated database states (inserting null boundaries, duplicating primary keys, inverting distributions):
    
    ![Test-Suite Mutation Equivalence Equation](figures/eq_test_suite_mutation.png)
    
-   $$R_{\text{TS}} = \prod_{k=0}^K \mathbb{I}\left( Q_{\text{gen}}(\mathcal{D}_k) \equiv Q_{\text{gold}}(\mathcal{D}_k) \right)$$
-   
-4. **Tier 4: Step Efficiency & Error Recovery ($R_{\text{efficiency}}$)**:  
-   Imposes a step discount ($-0.05 \times t$) to discourage redundant looping. Crucially, a $+0.3$ recovery bonus is awarded when a query that failed execution in turn $t-1$ is successfully diagnosed and executed in turn $t$.
+4. **Tier 4: Step Efficiency & Error Recovery (R_efficiency)**:  
+   Imposes a step discount (-0.05 × t) to discourage redundant looping. Crucially, a +0.3 recovery bonus is awarded when a query that failed execution in turn t-1 is successfully diagnosed and executed in turn t.
 
 ---
 
@@ -272,7 +264,7 @@ flowchart TD
 ```
 
 ### Step 1: Collect Balanced 500-Trajectory Distillation Corpus
-Collect 500 teacher-reviewed trajectories using the deterministic offline rule engine ($\mathcal{K}_{\text{SQL}}$), stratified across complex relational schemas (150 medium, 200 hard, 150 extra-hard):
+Collect 500 teacher-reviewed trajectories using the deterministic offline rule engine (K_SQL), stratified across complex relational schemas (150 medium, 200 hard, 150 extra-hard):
 
 ```bash
 make collect-distillation ARGS="--raw-spider data/raw/spider_data/train_spider.json \
@@ -334,7 +326,7 @@ make evaluate-zero-budget-mve ARGS="--checkpoint models/sft/harness_zero \
   --output results/micro_eval_harness_zero.json"
 ```
 
-*Checkpoint Gate Criteria*: The Harness-Zero checkpoint must demonstrate $\ge 80.0\%$ schema pre-inspection and zero AST crashes across all 35 in-memory fixtures before proceeding to RLVR.
+*Checkpoint Gate Criteria*: The Harness-Zero checkpoint must demonstrate ≥ 80.0% schema pre-inspection and zero AST crashes across all 35 in-memory fixtures before proceeding to RLVR.
 
 ---
 
@@ -442,16 +434,16 @@ To prevent conflating coincidental execution matches with semantic correctness, 
 
 ### Projected Comparative Results
 
-| Metric | Run A (Single-Turn Baseline Init) | Run B (Harness-Zero Distilled Init) | Projected Delta ($\Delta$) | Statistical Target |
+| Metric | Run A (Single-Turn Baseline Init) | Run B (Harness-Zero Distilled Init) | Projected Delta (Δ) | Statistical Target |
 | :--- | :---: | :---: | :---: | :---: |
-| **Steps to Positive Reward ($R > 0$)** | 120–160 steps | **20–35 steps** | **$4.0\times$ faster convergence** | $p < 0.001$ |
-| **Mean Reward @ Step 50** | $-0.45$ | **$+0.25$** | $+0.70$ advantage | $p < 0.001$ |
-| **Final Mean Reward (Step 250)** | $+0.15$ | **$+0.62$** | $+0.47$ advantage | $p < 0.01$ |
-| **Cumulative Reward AUC** | $-45.0$ | **$+95.0$** | **$+140.0$ AUC** | $p < 0.001$ |
-| **Spider Dev Test-Suite (TS)** | 53.5% | **61.2%** | **$+7.7\text{ pp}$** | $p < 0.01$ (Bootstrap $N=1000$) |
-| **Spider Dev Execution (EX)** | 59.0% | **67.4%** | $+8.4\text{ pp}$ | $p < 0.01$ |
-| **Multi-Turn Recovery Rate (MRR)** | 21.5% | **42.5%** | **$+21.0\text{ pp}$ ($2.0\times$)** | $p < 0.001$ |
-| **Spider-Realistic TS** | 44.0% | **53.8%** | **$+9.8\text{ pp}$** | $p < 0.01$ |
+| **Steps to Positive Reward (R > 0)** | 120–160 steps | **20–35 steps** | **4.0× faster convergence** | p < 0.001 |
+| **Mean Reward @ Step 50** | -0.45 | **+0.25** | +0.70 advantage | p < 0.001 |
+| **Final Mean Reward (Step 250)** | +0.15 | **+0.62** | +0.47 advantage | p < 0.01 |
+| **Cumulative Reward AUC** | -45.0 | **+95.0** | **+140.0 AUC** | p < 0.001 |
+| **Spider Dev Test-Suite (TS)** | 53.5% | **61.2%** | **+7.7 pp** | p < 0.01 (Bootstrap N=1000) |
+| **Spider Dev Execution (EX)** | 59.0% | **67.4%** | +8.4 pp | p < 0.01 |
+| **Multi-Turn Recovery Rate (MRR)** | 21.5% | **42.5%** | **+21.0 pp (2.0×)** | p < 0.001 |
+| **Spider-Realistic TS** | 44.0% | **53.8%** | **+9.8 pp** | p < 0.01 |
 
 ### Decision Gate Adjudication Framework
 
@@ -522,7 +514,7 @@ While test-time compound verification is ablated during the core training experi
 ### Research Question for Extension:
 *Does test-time verification compensate for an ungrounded generator policy (Run A), or does verification compound exclusively when paired with a procedurally grounded generator policy (Run B)?*
 
-* **Theoretical Prediction**: A test-time verifier cannot select a correct query if all candidates in the generated pool hallucinate non-existent columns. We predict that compound verification will yield only a modest $+2.5\text{ pp}$ boost over Run A (reaching ~56.0% TS), but an additive $+3.5\text{ pp}$ boost over Run B (reaching **~64.7% TS**), demonstrating that **test-time verification requires an exploratory, procedurally grounded generator to realize its potential**.
+* **Theoretical Prediction**: A test-time verifier cannot select a correct query if all candidates in the generated pool hallucinate non-existent columns. We predict that compound verification will yield only a modest +2.5 pp boost over Run A (reaching ~56.0% TS), but an additive +3.5 pp boost over Run B (reaching **~64.7% TS**), demonstrating that **test-time verification requires an exploratory, procedurally grounded generator to realize its potential**.
 
 ---
 
