@@ -98,8 +98,14 @@ def generate_predictions(
         )
         final_sql = trajectory.final_query.strip()
         inspected = any(s.action == "inspect_schema" for s in trajectory.steps)
+        # AST / Tool crash occurs if the model emits an unknown tool or invalid action structure.
+        # SQLite execution errors (e.g. syntax errors on trial SQL queries) are environment observations,
+        # not agent protocol/AST crashes.
         ast_crash = any(
-            s.action == "error" or "syntax error" in s.output.lower() for s in trajectory.steps
+            s.action == "error"
+            or s.output.startswith("Error: Unknown tool")
+            or s.action not in ("inspect_schema", "sample_data", "execute_sql", "final_answer")
+            for s in trajectory.steps
         )
         predictions.append(
             {
