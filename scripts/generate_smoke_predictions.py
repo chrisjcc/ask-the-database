@@ -69,7 +69,15 @@ def generate_predictions(
         for case in cases:
             # Simulate a realistic prediction (either golden or expected flaw based on ID)
             sql = case.get("expected_flaw") or case.get("query", "SELECT 1;")
-            predictions.append({"id": case["id"], "sql": sql})
+            predictions.append(
+                {
+                    "id": case["id"],
+                    "sql": sql,
+                    "turns": 3,
+                    "inspected_schema": True,
+                    "ast_crash": False,
+                }
+            )
         return predictions
 
     print(f"Initializing NL2SQLPipeline with model: {model_path} (max_turns={max_turns})...")
@@ -89,7 +97,19 @@ def generate_predictions(
             gold_sql=gold_sql,
         )
         final_sql = trajectory.final_query.strip()
-        predictions.append({"id": cid, "sql": final_sql})
+        inspected = any(s.action == "inspect_schema" for s in trajectory.steps)
+        ast_crash = any(
+            s.action == "error" or "syntax error" in s.output.lower() for s in trajectory.steps
+        )
+        predictions.append(
+            {
+                "id": cid,
+                "sql": final_sql,
+                "turns": len(trajectory.steps),
+                "inspected_schema": inspected,
+                "ast_crash": ast_crash,
+            }
+        )
 
     return predictions
 
@@ -126,8 +146,8 @@ def main() -> int:
     parser.add_argument(
         "--max-turns",
         type=int,
-        default=1,
-        help="Maximum interactive agent turns (1 for greedy single-turn, >1 for exploration).",
+        default=5,
+        help="Maximum interactive agent turns (default: 5 for multi-turn rollout).",
     )
     parser.add_argument(
         "--device",

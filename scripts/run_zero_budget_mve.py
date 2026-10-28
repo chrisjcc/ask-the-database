@@ -452,6 +452,12 @@ def main() -> int:
         help="Optional path to Harness-Zero model predictions JSONL.",
     )
     parser.add_argument(
+        "--max-turns",
+        type=int,
+        default=5,
+        help="Maximum interactive agent turns when evaluating a checkpoint (default: 5).",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Run without loading real model weights for fast testing.",
@@ -460,6 +466,7 @@ def main() -> int:
 
     baseline_preds_path = args.baseline_preds
     harness_zero_preds_path = args.harness_zero_preds
+    checkpoint_gate: dict[str, Any] | None = None
 
     if args.checkpoint:
         ckpt_path = Path(args.checkpoint)
@@ -485,13 +492,32 @@ def main() -> int:
                 model_path=args.checkpoint,
                 cases=cases,
                 db_path=temp_db_path,
-                max_turns=1,
+                max_turns=args.max_turns,
                 device="auto",
                 dry_run=args.dry_run,
             )
         finally:
             if temp_db_path.exists():
                 temp_db_path.unlink()
+
+        total_p = len(preds)
+        inspected_count = sum(1 for p in preds if p.get("inspected_schema", False))
+        ast_crash_count = sum(1 for p in preds if p.get("ast_crash", False))
+        inspection_rate = (inspected_count / total_p * 100.0) if total_p else 0.0
+        gate_passed = (inspection_rate >= 80.0) and (ast_crash_count == 0)
+
+        checkpoint_gate = {
+            "checkpoint": args.checkpoint,
+            "total_cases": total_p,
+            "schema_inspection_rate": round(inspection_rate, 2),
+            "schema_inspection_threshold": 80.0,
+            "schema_inspection_passed": inspection_rate >= 80.0,
+            "ast_crash_count": ast_crash_count,
+            "ast_crash_threshold": 0,
+            "ast_crash_passed": ast_crash_count == 0,
+            "gate_verdict": "GO" if gate_passed else "NO-GO",
+            "ready_for_stage_4_rlvr": gate_passed,
+        }
 
         out_preds_dir = Path("results")
         out_preds_dir.mkdir(parents=True, exist_ok=True)
@@ -511,6 +537,8 @@ def main() -> int:
         baseline_preds_path=baseline_preds_path,
         harness_zero_preds_path=harness_zero_preds_path,
     )
+    if checkpoint_gate is not None:
+        result["checkpoint_gate"] = checkpoint_gate
 
     # Save summary JSON
     args.output_summary.parent.mkdir(parents=True, exist_ok=True)
