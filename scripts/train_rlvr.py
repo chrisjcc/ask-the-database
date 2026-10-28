@@ -280,6 +280,18 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                 )
             )
 
+            # Persist model adapter weights and tokenizer if pipeline has them loaded
+            if pipeline.model is not None:
+                try:
+                    pipeline.model.save_pretrained(out_path)
+                except Exception as e:
+                    logger.warning("Could not save model to %s: %s", out_path, e)
+            if pipeline.tokenizer is not None:
+                try:
+                    pipeline.tokenizer.save_pretrained(out_path)
+                except Exception as e:
+                    logger.warning("Could not save tokenizer to %s: %s", out_path, e)
+
     if wandb_run is not None:
         wandb_run.finish()
 
