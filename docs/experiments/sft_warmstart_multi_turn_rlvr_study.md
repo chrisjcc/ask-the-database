@@ -377,7 +377,15 @@ make evaluate-zero-budget-mve ARGS="--harness-zero-preds results/harness_zero_sm
   --output results/zero_budget_mve_summary.json"
 ```
 
-*Checkpoint Gate Criteria*: The Harness-Zero checkpoint must demonstrate ≥ 80.0% schema pre-inspection and zero AST crashes across all 35 in-memory fixtures before proceeding to RLVR.
+#### Checkpoint Gate Criteria & Decision Interpretation
+The Harness-Zero checkpoint must demonstrate **≥ 80.0% schema pre-inspection** and **zero AST crashes** across all 35 in-memory fixtures before proceeding to Stage 4 RLVR:
+
+- **What a "NO-GO" Would Mean**:  
+  If `models/sft/harness_zero` reports a NO-GO, it indicates that SFT distillation failed: the model outputs corrupted tool tags, hallucinates non-existent tools, or fails to inspect schemas. In that state, starting RLVR is futile because the agent would immediately crash on Step 0 of reinforcement learning, receiving syntax penalties ($R_{\text{syntax}} = -1.0$) and failing to explore the database environment.
+- **What the "GO" Confirms**:  
+  The model reliably opens episodes with schema inspection and strictly adheres to the XML tool protocol without syntax crashes. It confirms that the student has internalized the tool-calling grammar and reflex, placing it in the optimal starting condition to enter Stage 4.
+- **Scope Distinction (Tier 1 Protocol vs. Tier 2 Relational Accuracy)**:  
+  The Step 3 gate specifically validates **Tier 1 Tool Protocol Compliance**, *not* zero database execution errors. Pre-RL SFT models will still exhibit Tier 2 relational mistakes (e.g., dialect drift, reserved word collisions like `order` vs. `orders`, unjoined rows). Training the policy to autonomously diagnose and eliminate these database execution errors in a live sandbox environment is the core objective of **Stage 4: Multi-Turn GRPO RLVR**.
 
 ---
 
