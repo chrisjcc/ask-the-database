@@ -123,7 +123,8 @@ def generate_predictions(
 def main() -> int:
     """CLI driver for smoke case prediction generation."""
     parser = argparse.ArgumentParser(
-        description="Generate candidate SQL predictions for Zero-Budget Harness smoke cases."
+        description="Generate candidate SQL predictions for Zero-Budget Harness smoke cases.",
+        allow_abbrev=False,
     )
     parser.add_argument(
         "--model-path",

@@ -104,7 +104,8 @@ def print_summary_report(summary: HarnessSummary, title: str) -> None:
 def main() -> int:
     """Main CLI driver for running the zero-budget smoke evaluation."""
     parser = argparse.ArgumentParser(
-        description="Run AskTheDatabase Zero-Budget Evaluation Harness (< 3.0s local smoke check)."
+        description="Run AskTheDatabase Zero-Budget Evaluation Harness (< 3.0s local smoke check).",
+        allow_abbrev=False,
     )
     group = parser.add_mutually_exclusive_group()
     group.add_argument(
@@ -124,14 +125,11 @@ def main() -> int:
     )
     group.add_argument(
         "--checkpoint",
-        "--model-path",
         dest="checkpoint",
         type=str,
         help="Path to fine-tuned model checkpoint or LoRA adapter directory to evaluate live.",
     )
     parser.add_argument(
-        "-o",
-        "--output",
         "--output-json",
         dest="output_json",
         type=Path,

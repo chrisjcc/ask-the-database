@@ -414,11 +414,10 @@ Given the unambiguous **GO** adjudication across all 4 gates, the Zero-Budget Ev
 def main() -> int:
     """CLI driver for orchestrating the MVE evaluation."""
     parser = argparse.ArgumentParser(
-        description="Run Zero-Budget Evaluation Harness MVE benchmark and gate adjudication."
+        description="Run Zero-Budget Evaluation Harness MVE benchmark and gate adjudication.",
+        allow_abbrev=False,
     )
     parser.add_argument(
-        "-o",
-        "--output",
         "--output-summary",
         dest="output_summary",
         type=Path,
@@ -433,7 +432,6 @@ def main() -> int:
     )
     parser.add_argument(
         "--checkpoint",
-        "--model-path",
         dest="checkpoint",
         type=str,
         default=None,

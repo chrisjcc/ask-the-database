@@ -345,17 +345,17 @@ Run live evaluation directly against the 35 in-memory fixtures (generates candid
 ```bash
 # Validate Single-Turn Baseline Checkpoint
 make smoke-eval ARGS="--checkpoint models/sft/baseline \
-  --output results/micro_eval_baseline.json"
+  --output-json results/micro_eval_baseline.json"
 
 # Validate Harness-Zero Distilled Checkpoint
 make smoke-eval ARGS="--checkpoint models/sft/harness_zero \
-  --output results/micro_eval_harness_zero.json"
+  --output-json results/micro_eval_harness_zero.json"
 ```
 
 *Alternative (Comparative Gate Adjudication)*: You can also pass `--checkpoint` to `make evaluate-zero-budget-mve` to update the 4 pre-registered decision gates with live predictions:
 ```bash
 make evaluate-zero-budget-mve ARGS="--checkpoint models/sft/harness_zero \
-  --output results/micro_eval_harness_zero.json"
+  --output-summary results/micro_eval_harness_zero.json"
 ```
 
 #### Option 2: Decoupled Two-Step Workflow (Recommended for Remote GPU Servers)
@@ -370,11 +370,11 @@ python3 scripts/generate_smoke_predictions.py \
 # Step 3B: Evaluate against the in-memory micro-harness (< 3.0s)
 python3 scripts/run_smoke_eval.py \
   --predictions results/harness_zero_smoke_preds.jsonl \
-  --output results/micro_eval_harness_zero.json
+  --output-json results/micro_eval_harness_zero.json
 
 # Step 3C: Optional 4-gate comparative MVE check
 make evaluate-zero-budget-mve ARGS="--harness-zero-preds results/harness_zero_smoke_preds.jsonl \
-  --output results/zero_budget_mve_summary.json"
+  --output-summary results/zero_budget_mve_summary.json"
 ```
 
 #### Checkpoint Gate Criteria & Decision Interpretation
@@ -399,7 +399,7 @@ make train-grpo ARGS="training.model_path=models/sft/baseline \
   training.learning_rate=5e-6 \
   training.per_device_train_batch_size=1 \
   training.gradient_accumulation_steps=8 \
-  training.num_generations=4 \
+  training.num_rollouts_per_prompt=4 \
   training.max_turns=5 \
   training.report_to=wandb \
   training.wandb.project=ask-the-database"
@@ -413,7 +413,7 @@ make train-grpo ARGS="training.model_path=models/sft/harness_zero \
   training.learning_rate=5e-6 \
   training.per_device_train_batch_size=1 \
   training.gradient_accumulation_steps=8 \
-  training.num_generations=4 \
+  training.num_rollouts_per_prompt=4 \
   training.max_turns=5 \
   training.report_to=wandb \
   training.wandb.project=ask-the-database"

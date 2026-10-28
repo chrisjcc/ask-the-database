@@ -9,8 +9,7 @@ model_path: "models/sft/final"             # Seed policy checkpoint (SFT baselin
 output_dir: "models/rlvr/final"            # Directory to save trained policy checkpoints
 
 # --- Agent Rollouts & Interaction ---
-num_rollouts_per_prompt: 8                 # Number of parallel agent rollouts G per Spider question
-num_generations: 4                         # Rollouts G per prompt (alias for num_rollouts_per_prompt)
+num_rollouts_per_prompt: 4                 # Number of parallel agent rollouts G per Spider question
 per_device_train_batch_size: 1             # Batch size per device
 gradient_accumulation_steps: 8             # Number of gradient accumulation steps
 max_turns: 5                               # Maximum interactive turns per trajectory (budget B=5)

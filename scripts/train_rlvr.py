@@ -26,10 +26,7 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
     env = SkyRLSQLEnvironment(config=training_cfg, reward_evaluator=reward_evaluator)
 
     dry_run = bool(getattr(cfg, "dry_run", False) or getattr(training_cfg, "dry_run", False))
-    num_rollouts = int(
-        getattr(training_cfg, "num_generations", None)
-        or getattr(training_cfg, "num_rollouts_per_prompt", 8)
-    )
+    num_rollouts = int(getattr(training_cfg, "num_rollouts_per_prompt", 4))
     max_steps = int(getattr(training_cfg, "max_steps", 250))
     if max_steps <= 0:
         max_steps = 250
