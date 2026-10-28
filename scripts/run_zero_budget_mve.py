@@ -417,7 +417,10 @@ def main() -> int:
         description="Run Zero-Budget Evaluation Harness MVE benchmark and gate adjudication."
     )
     parser.add_argument(
+        "-o",
+        "--output",
         "--output-summary",
+        dest="output_summary",
         type=Path,
         default=Path("results/zero_budget_mve_summary.json"),
         help="Path to write JSON summary artifact.",
@@ -427,6 +430,14 @@ def main() -> int:
         type=Path,
         default=Path("docs/research/zero-budget-eval-harness/mve_results.md"),
         help="Path to write research markdown report.",
+    )
+    parser.add_argument(
+        "--checkpoint",
+        "--model-path",
+        dest="checkpoint",
+        type=str,
+        default=None,
+        help="Optional path to model checkpoint or LoRA adapter directory to evaluate live.",
     )
     parser.add_argument(
         "--baseline-preds",
@@ -440,12 +451,65 @@ def main() -> int:
         default=None,
         help="Optional path to Harness-Zero model predictions JSONL.",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run without loading real model weights for fast testing.",
+    )
     args = parser.parse_args()
+
+    baseline_preds_path = args.baseline_preds
+    harness_zero_preds_path = args.harness_zero_preds
+
+    if args.checkpoint:
+        ckpt_path = Path(args.checkpoint)
+        ckpt_name = ckpt_path.name
+        print(f"Evaluating candidate checkpoint live on 35 smoke cases: {args.checkpoint}...")
+
+        # Import smoke prediction utilities
+        scripts_dir = Path(__file__).resolve().parent
+        if str(scripts_dir) not in sys.path:
+            sys.path.insert(0, str(scripts_dir))
+        from generate_smoke_predictions import (
+            generate_predictions,
+            load_smoke_cases,
+            setup_temporary_database,
+        )
+
+        cases_file = Path("data/fixtures/smoke_cases.jsonl")
+        fixtures_sql = Path("data/fixtures/seed_fixtures.sql")
+        cases = load_smoke_cases(cases_file)
+        temp_db_path = setup_temporary_database(fixtures_sql)
+        try:
+            preds = generate_predictions(
+                model_path=args.checkpoint,
+                cases=cases,
+                db_path=temp_db_path,
+                max_turns=1,
+                device="auto",
+                dry_run=args.dry_run,
+            )
+        finally:
+            if temp_db_path.exists():
+                temp_db_path.unlink()
+
+        out_preds_dir = Path("results")
+        out_preds_dir.mkdir(parents=True, exist_ok=True)
+        ckpt_preds_file = out_preds_dir / f"{ckpt_name}_smoke_preds.jsonl"
+        with open(ckpt_preds_file, "w", encoding="utf-8") as f:
+            for p in preds:
+                f.write(json.dumps(p) + "\n")
+        print(f"Generated candidate predictions: {ckpt_preds_file}")
+
+        if "baseline" in ckpt_name.lower():
+            baseline_preds_path = ckpt_preds_file
+        else:
+            harness_zero_preds_path = ckpt_preds_file
 
     print("Running Zero-Budget Evaluation Harness Minimum Viable Experiment (MVE)...")
     result = run_benchmark(
-        baseline_preds_path=args.baseline_preds,
-        harness_zero_preds_path=args.harness_zero_preds,
+        baseline_preds_path=baseline_preds_path,
+        harness_zero_preds_path=harness_zero_preds_path,
     )
 
     # Save summary JSON

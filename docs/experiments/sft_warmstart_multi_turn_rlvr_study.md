@@ -337,16 +337,44 @@ make train-harness-zero ARGS="model=qwen2_5_coder_1_5b \
 ---
 
 ### Step 3: Checkpoint Sanity Validation (In-Memory Micro-Harness)
-Before committing 24+ hours of GPU cluster time to RLVR, validate both SFT checkpoints using the in-memory Zero-Budget Micro-Harness:
+Before committing 24+ hours of GPU cluster time to RLVR, validate both SFT checkpoints using the in-memory Zero-Budget Micro-Harness. This rapidly assesses whether the distilled checkpoint has internalized basic conversational tool-calling habits and schema groundings without spending budget on full benchmark rollouts.
+
+#### Option 1: Direct Single-Command Checkpoint Validation
+Run live evaluation directly against the 35 in-memory fixtures (generates candidate rollouts and evaluates diagnostic trap resolution in one step):
 
 ```bash
 # Validate Single-Turn Baseline Checkpoint
-make evaluate-zero-budget-mve ARGS="--checkpoint models/sft/baseline \
+make smoke-eval ARGS="--checkpoint models/sft/baseline \
   --output results/micro_eval_baseline.json"
 
 # Validate Harness-Zero Distilled Checkpoint
+make smoke-eval ARGS="--checkpoint models/sft/harness_zero \
+  --output results/micro_eval_harness_zero.json"
+```
+
+*Alternative (Comparative Gate Adjudication)*: You can also pass `--checkpoint` to `make evaluate-zero-budget-mve` to update the 4 pre-registered decision gates with live predictions:
+```bash
 make evaluate-zero-budget-mve ARGS="--checkpoint models/sft/harness_zero \
   --output results/micro_eval_harness_zero.json"
+```
+
+#### Option 2: Decoupled Two-Step Workflow (Recommended for Remote GPU Servers)
+On cluster nodes, generate the 35 candidate rollouts using the GPU, then evaluate the resulting predictions instantly (< 30 ms) in-memory:
+
+```bash
+# Step 3A: Generate predictions for the 35 smoke fixtures on GPU
+python3 scripts/generate_smoke_predictions.py \
+  --model-path models/sft/harness_zero \
+  --output results/harness_zero_smoke_preds.jsonl
+
+# Step 3B: Evaluate against the in-memory micro-harness (< 3.0s)
+python3 scripts/run_smoke_eval.py \
+  --predictions results/harness_zero_smoke_preds.jsonl \
+  --output results/micro_eval_harness_zero.json
+
+# Step 3C: Optional 4-gate comparative MVE check
+make evaluate-zero-budget-mve ARGS="--harness-zero-preds results/harness_zero_smoke_preds.jsonl \
+  --output results/zero_budget_mve_summary.json"
 ```
 
 *Checkpoint Gate Criteria*: The Harness-Zero checkpoint must demonstrate ≥ 80.0% schema pre-inspection and zero AST crashes across all 35 in-memory fixtures before proceeding to RLVR.

@@ -121,10 +121,25 @@ def main() -> int:
         type=Path,
         help="Path to JSONL file with {'id': str, 'sql': str} predictions to evaluate.",
     )
+    group.add_argument(
+        "--checkpoint",
+        "--model-path",
+        dest="checkpoint",
+        type=str,
+        help="Path to fine-tuned model checkpoint or LoRA adapter directory to evaluate live.",
+    )
     parser.add_argument(
+        "-o",
+        "--output",
         "--output-json",
+        dest="output_json",
         type=Path,
         help="Optional path to export evaluation summary JSON.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run without loading real model weights for fast testing.",
     )
     args = parser.parse_args()
 
@@ -148,6 +163,42 @@ def main() -> int:
                 pairs.append((cases_by_id[cid], p.get("sql") or p.get("query", "")))
 
         summary = harness.evaluate_batch(pairs)
+    elif args.checkpoint:
+        title = f"Checkpoint Evaluation ({Path(args.checkpoint).name})"
+        cases_file = Path("data/fixtures/smoke_cases.jsonl")
+        fixtures_sql = Path("data/fixtures/seed_fixtures.sql")
+
+        scripts_dir = Path(__file__).resolve().parent
+        if str(scripts_dir) not in sys.path:
+            sys.path.insert(0, str(scripts_dir))
+        from generate_smoke_predictions import (
+            generate_predictions,
+            load_smoke_cases,
+            setup_temporary_database,
+        )
+
+        cases = load_smoke_cases(cases_file)
+        temp_db_path = setup_temporary_database(fixtures_sql)
+        try:
+            preds = generate_predictions(
+                model_path=args.checkpoint,
+                cases=cases,
+                db_path=temp_db_path,
+                max_turns=1,
+                device="auto",
+                dry_run=args.dry_run,
+            )
+        finally:
+            if temp_db_path.exists():
+                temp_db_path.unlink()
+
+        cases_by_id = {c["id"]: c for c in cases}
+        pairs = [
+            (cases_by_id[p["id"]], p.get("sql") or p.get("query", ""))
+            for p in preds
+            if p["id"] in cases_by_id
+        ]
+        summary = harness.evaluate_batch(pairs)
     else:
         # Default: evaluate golden queries
         title = "Golden Sanity Verification"
@@ -162,7 +213,9 @@ def main() -> int:
         print(f"\nSaved summary to: {args.output_json}")
 
     # Return non-zero if golden evaluation fails or latency exceeds Gate 1 budget
-    if (args.golden or not (args.flawed or args.predictions)) and summary.pass_rate < 1.0:
+    if (
+        args.golden or not (args.flawed or args.predictions or args.checkpoint)
+    ) and summary.pass_rate < 1.0:
         return 1
     if summary.total_latency_ms > 3000.0:
         print(
