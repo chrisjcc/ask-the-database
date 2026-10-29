@@ -22,14 +22,13 @@ Comparing reinforcement learning convergence between **Condition 2 (Conventional
 
 | Evaluation Benchmark | Run A (from Cond 2 SFT) | Run B (from Cond 4 Harness-Zero) | Delta ($\Delta$) |
 | :--- | :---: | :---: | :---: |
-| **Test-Suite Accuracy (TS)** | 1.26% | **13.54%** | **+12.28 pp** (10.7x) |
-| **Execution Accuracy (EX)** | 1.35% | **14.22%** | **+12.87 pp** (10.5x) |
-| **Valid Action Rate (VA)** | 2.80% | **19.83%** | **+17.03 pp** (7.1x) |
-| **Multi-Turn Recovery Rate (MRR)** | 0.20% | **3.04%** | **+2.84 pp** (15.2x) |
+| **Test-Suite Accuracy (TS)** | 1.26% | **13.54%** | **+12.28 pp** |
+| **Execution Accuracy (EX)** | 1.35% | **14.22%** | +12.87 pp |
+| **Multi-Turn Recovery Rate (MRR)** | 0.2% | **3.04%** | +2.84 pp |
 
 ---
 
 ## 3. Scientific Takeaway
 
-* **Sample Efficiency**: Pre-grounding via Harness-Zero (Condition 4) seeds the agent policy with schema-inspection discipline (`inspect_schema`) and autonomous syntax error recovery. This eliminates the zero-reward exploration plateau, enabling RLVR to achieve positive rewards **9.0x faster** (Step 3 vs Step 27).
-* **Asymptotic Ceiling**: Reinforcement learning starting from Harness-Zero reaches a substantially higher final correctness ceiling (**+12.28 pp TS**, **10.7x** relative accuracy), proving that procedural pre-training prevents policy collapse and enables autonomous multi-turn exploration.
+* **Sample Efficiency**: Pre-grounding via Harness-Zero (Condition 4) seeds the agent policy with schema-inspection discipline (`inspect_schema`) and autonomous syntax error recovery. This eliminates the zero-reward exploration plateau, enabling RLVR to achieve positive rewards **9.0x**.
+* **Asymptotic Ceiling**: Reinforcement learning starting from Harness-Zero reaches a higher final correctness ceiling (**+12.28 pp TS**), proving that procedural pre-training prevents policy collapse on complex SQL joins and subqueries.
