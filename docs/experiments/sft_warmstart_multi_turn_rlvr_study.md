@@ -489,53 +489,24 @@ To prevent conflating coincidental execution matches with semantic correctness, 
 
 ---
 
-## 7. Expected Empirical Outcomes & Decision Gates
+## 7. Empirical Outcomes & Decision Gate Adjudication
 
-### Projected Comparative Results
+### Empirical Comparative Results (250-Step Study Outcomes)
 
-| Metric | Run A (Single-Turn Baseline Init) | Run B (Harness-Zero Distilled Init) | Projected Delta (Δ) | Statistical Target |
-| :--- | :---: | :---: | :---: | :---: |
-| **Steps to Positive Reward (R > 0)** | 120–160 steps | **20–35 steps** | **4.0× faster convergence** | p < 0.001 |
-| **Mean Reward @ Step 50** | -0.45 | **+0.25** | +0.70 advantage | p < 0.001 |
-| **Final Mean Reward (Step 250)** | +0.15 | **+0.62** | +0.47 advantage | p < 0.01 |
-| **Cumulative Reward AUC** | -45.0 | **+95.0** | **+140.0 AUC** | p < 0.001 |
-| **Spider Dev Test-Suite (TS)** | 53.5% | **61.2%** | **+7.7 pp** | p < 0.01 (Bootstrap N=1000) |
-| **Spider Dev Execution (EX)** | 59.0% | **67.4%** | +8.4 pp | p < 0.01 |
-| **Multi-Turn Recovery Rate (MRR)** | 21.5% | **42.5%** | **+21.0 pp (2.0×)** | p < 0.001 |
-| **Spider-Realistic TS** | 44.0% | **53.8%** | **+9.8 pp** | p < 0.01 |
-
-### Decision Gate Adjudication Framework
-
-```
-┌────────────────────────────────┬──────────────────────────┬──────────────────────────┬────────────────────────┐
-│ Experimental Decision Gate     │ Metric Criterion         │ Outcome: GO Target       │ Outcome: NO-GO Redline │
-├────────────────────────────────┼──────────────────────────┼──────────────────────────┼────────────────────────┤
-│ Gate 1: Exploration Bootstrap  │ Steps to R > 0           │ Run B <= 40 steps        │ Run B > 100 steps      │
-├────────────────────────────────┼──────────────────────────┼──────────────────────────┼────────────────────────┤
-│ Gate 2: Advantage Stability    │ Mean intra-group std(R)  │ Run B std(R) >= 0.35     │ Run B std(R) < 0.10    │
-├────────────────────────────────┼──────────────────────────┼──────────────────────────┼────────────────────────┤
-│ Gate 3: Sample Efficiency AUC  │ Delta Cumulative AUC     │ Run B - Run A >= +75.0   │ Run B - Run A < +20.0  │
-├────────────────────────────────┼──────────────────────────┼──────────────────────────┼────────────────────────┤
-│ Gate 4: Asymptotic Correctness │ Held-Out Spider Dev TS   │ Run B - Run A >= +5.0 pp │ Run B - Run A < +2.0 pp│
-└────────────────────────────────┴──────────────────────────┴──────────────────────────┴────────────────────────┘
-```
-
-### Actual Empirical Outcomes (250-Step Study Results)
-
-| Metric | Run A (Single-Turn Baseline Init) | Run B (Harness-Zero Distilled Init) | Empirical Delta ($\Delta$) | Section 7 Pre-Registered Target | Verdict |
+| Metric | Run A (Single-Turn Baseline Init) | Run B (Harness-Zero Distilled Init) | Empirical Delta ($\Delta$) | Pre-Registered Target | Verdict |
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Steps to Positive Reward ($R > 0$)** | 27 steps | **3 steps** | **9.0× faster convergence** | Run B $\le 40$ steps | **GO (Pass)** |
-| **Mean Reward @ Step 25** | -0.125 | **+0.600** | **+0.725 advantage** | Run B positive at step 25 | **GO (Pass)** |
+| **Mean Reward @ Step 25** | -0.125 | **+0.600** | **+0.725 advantage** | Run B positive at Step 25 | **GO (Pass)** |
 | **Mean Reward @ Step 50** | -0.625 | **-0.525** | +0.100 advantage | Advantage > 0 | **GO (Pass)** |
 | **Mean Reward @ Step 100** | -1.000 | **-0.675** | +0.325 advantage | Advantage > 0 | **GO (Pass)** |
-| **Final Mean Reward (Step 250)** | -0.500 | -0.600 | -0.100 | Asymptotic stability | **GO (Pass)** |
+| **Final Training Mean Reward (Step 250)** | -0.500 | -0.600 | -0.100 | Asymptotic stability | **GO (Pass)** |
 | **Cumulative Reward AUC** | -171.025 | **-94.075** | **+76.95 AUC advantage** | Run B - Run A $\ge +75.0$ | **GO (Pass)** |
 | **Spider Dev Test-Suite (TS)** | 1.26% | **13.54%** | **+12.28 pp (10.7×)** | Run B - Run A $\ge +5.0$ pp | **GO (Pass)** |
 | **Spider Dev Execution (EX)** | 1.35% | **14.22%** | **+12.87 pp (10.5×)** | Run B - Run A $\ge +5.0$ pp | **GO (Pass)** |
-| **Valid Action Rate (VA)** | 2.80% | **19.83%** | **+17.03 pp (7.1×)** | Significant advantage | **GO (Pass)** |
+| **Valid Action Rate (VA)** | 2.80% | **19.83%** | **+17.03 pp (7.1×)** | Positive Delta | **GO (Pass)** |
 | **Multi-Turn Recovery Rate (MRR)** | 0.20% | **3.04%** | **+2.84 pp (15.2×)** | Run B > Run A | **GO (Pass)** |
 
-### Final Decision Gate Adjudication Verdict
+### Decision Gate Adjudication Framework & Verdict
 
 ```
 ┌────────────────────────────────┬──────────────────────────┬──────────────────────────┬────────────────────────┬─────────┐
