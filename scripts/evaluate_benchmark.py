@@ -49,22 +49,6 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
     num_candidates = int(evaluation_section.get("num_candidates", 5))
     temperature = float(evaluation_section.get("temperature", 0.7))
 
-    verifier_selector: VerifierSelector | None = None
-    if use_verifier:
-        logger.info(
-            "Initializing VerifierSelector (Best-of-%d, T=%.2f) for model: %s",
-            num_candidates,
-            temperature,
-            model_path,
-        )
-        sampler = CandidateSampler(
-            model_path=model_path,
-            num_candidates=num_candidates,
-            temperature=temperature,
-        )
-        verifier_selector = VerifierSelector(sampler=sampler)
-    else:
-        logger.info("Initializing NL2SQL Evaluation Harness for model: %s", model_path)
     pipeline = NL2SQLPipeline(model_path=model_path, max_turns=max_turns)
     if pipeline.model is None and model_path:
         if pipeline.load_error:
@@ -78,6 +62,25 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
             "Results will NOT reflect real model performance.",
             model_path,
         )
+
+    verifier_selector: VerifierSelector | None = None
+    if use_verifier:
+        logger.info(
+            "Initializing VerifierSelector (Best-of-%d, T=%.2f) for model: %s",
+            num_candidates,
+            temperature,
+            model_path,
+        )
+        sampler = CandidateSampler(
+            model=pipeline.model,
+            tokenizer=pipeline.tokenizer,
+            model_path=model_path,
+            num_candidates=num_candidates,
+            temperature=temperature,
+        )
+        verifier_selector = VerifierSelector(sampler=sampler)
+    else:
+        logger.info("Initializing NL2SQL Evaluation Harness for model: %s", model_path)
 
     ts_evaluator = TestSuiteEvaluator()
     ex_evaluator = ExecutionEquivalenceEvaluator()

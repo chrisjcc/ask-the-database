@@ -131,7 +131,10 @@ class CandidateSampler:
     def _try_load_model(self) -> None:
         """Attempt loading PyTorch / Hugging Face model and tokenizer."""
         try:
+            import json
+
             import torch
+            from peft import PeftModel
             from transformers import AutoModelForCausalLM, AutoTokenizer
 
             assert self.model_path is not None
@@ -139,18 +142,63 @@ class CandidateSampler:
             if device_target == "auto":
                 device_target = "cuda" if torch.cuda.is_available() else "cpu"
 
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, trust_remote_code=True)
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_path,
-                torch_dtype=self.torch_dtype or torch.bfloat16,
-                device_map=device_target if device_target != "cpu" else None,
-                trust_remote_code=True,
+            path_obj = Path(self.model_path)
+            target_path = path_obj
+
+            # If this is an RLVR output directory without local adapter weights, inspect rlvr_policy_config.json
+            if (
+                path_obj.is_dir()
+                and not (path_obj / "adapter_config.json").exists()
+                and not (path_obj / "config.json").exists()
+            ):
+                policy_conf_path = path_obj / "rlvr_policy_config.json"
+                if policy_conf_path.exists():
+                    with open(policy_conf_path, encoding="utf-8") as f:
+                        policy_conf = json.load(f)
+                    underlying = policy_conf.get("model_path")
+                    if underlying and Path(underlying).exists():
+                        target_path = Path(underlying)
+                        logger.info(
+                            "Resolved RLVR checkpoint '%s' to underlying policy '%s'",
+                            self.model_path,
+                            target_path,
+                        )
+
+            # Check if target is a PEFT adapter directory
+            adapter_conf_path = (
+                target_path / "adapter_config.json" if target_path.is_dir() else None
             )
+            if adapter_conf_path and adapter_conf_path.exists():
+                with open(adapter_conf_path, encoding="utf-8") as f:
+                    conf = json.load(f)
+                base_model_name = conf.get(
+                    "base_model_name_or_path", "Qwen/Qwen2.5-Coder-7B-Instruct"
+                )
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    base_model_name, trust_remote_code=True
+                )
+                base_model = AutoModelForCausalLM.from_pretrained(
+                    base_model_name,
+                    torch_dtype=self.torch_dtype or torch.bfloat16,
+                    device_map=device_target if device_target != "cpu" else None,
+                    trust_remote_code=True,
+                )
+                self.model = PeftModel.from_pretrained(base_model, str(target_path))
+            else:
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    str(target_path), trust_remote_code=True
+                )
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    str(target_path),
+                    torch_dtype=self.torch_dtype or torch.bfloat16,
+                    device_map=device_target if device_target != "cpu" else None,
+                    trust_remote_code=True,
+                )
             if device_target == "cpu" and hasattr(self.model, "to"):
                 self.model.to("cpu")
             logger.info("Successfully loaded model from %s on %s", self.model_path, device_target)
         except Exception as e:
-            logger.debug("Model loading skipped or unavailable from %s: %s", self.model_path, e)
+            logger.warning("Could not load model weights from %s: %s", self.model_path, e)
 
     def build_generation_prompt(self, question: str, schema_ddl: str) -> str:
         """Format standard ChatML generation prompt for text-to-SQL."""
