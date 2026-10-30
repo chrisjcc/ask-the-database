@@ -31,7 +31,7 @@ DATASET_REPO ?= chrisjcc/ask-the-database
         preprocess collect-distillation dvc-repro \
         train-sft train-filtered train-harness-zero train-grpo \
         sweep \
-        smoke-eval evaluate-zero-budget-mve evaluate evaluate-mve compare-rlvr \
+        smoke-eval evaluate-zero-budget-mve evaluate evaluate-mve compare-rlvr evaluate-verifier-mve \
         generate-hf-cards publish-hf-cards publish-hf-release \
         run-app docker-build docker-run
 
@@ -71,6 +71,7 @@ help:
 	@echo "  make evaluate                 Evaluate full benchmark suites (Spider, DK, Syn, Realistic)"
 	@echo "  make evaluate-mve             Adjudicate 4-condition MVE decision gates across 500 episodes"
 	@echo "  make compare-rlvr             Compare sample efficiency & asymptotic accuracy (Run A vs B)"
+	@echo "  make evaluate-verifier-mve    Adjudicate LLM-as-a-Verifier MVE decision gates & publish report"
 	@echo ""
 	@echo "Deployment & Hugging Face Hub:"
 	@echo "  make generate-hf-cards        Generate Model Card & Dataset READMEs locally (--card-only)"
@@ -224,6 +225,9 @@ evaluate-mve:
 
 compare-rlvr:
 	$(PYTHON) scripts/compare_rlvr_efficiency.py $(ARGS)
+
+evaluate-verifier-mve:
+	$(PYTHON) scripts/run_verifier_mve.py $(ARGS)
 
 # ------------------------------------------------------------
 # 6. Deployment & Hugging Face Hub

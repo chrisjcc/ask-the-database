@@ -15,7 +15,9 @@ from tqdm import tqdm
 
 from ask_the_database.environment.sqlite_env import SQLiteEnvironment
 from ask_the_database.environment.test_suite_evaluator import TestSuiteEvaluator
+from ask_the_database.inference.candidate_sampler import CandidateSampler
 from ask_the_database.inference.pipeline import NL2SQLPipeline
+from ask_the_database.inference.verifier_selector import VerifierSelector
 from ask_the_database.rewards.execution_reward import ExecutionEquivalenceEvaluator
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -43,7 +45,10 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
     if isinstance(benchmarks, str):
         benchmarks = [benchmarks]
 
-    logger.info("Initializing NL2SQL Evaluation Harness for model: %s", model_path)
+    use_verifier = bool(evaluation_section.get("use_verifier", False))
+    num_candidates = int(evaluation_section.get("num_candidates", 5))
+    temperature = float(evaluation_section.get("temperature", 0.7))
+
     pipeline = NL2SQLPipeline(model_path=model_path, max_turns=max_turns)
     if pipeline.model is None and model_path:
         if pipeline.load_error:
@@ -57,6 +62,25 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
             "Results will NOT reflect real model performance.",
             model_path,
         )
+
+    verifier_selector: VerifierSelector | None = None
+    if use_verifier:
+        logger.info(
+            "Initializing VerifierSelector (Best-of-%d, T=%.2f) for model: %s",
+            num_candidates,
+            temperature,
+            model_path,
+        )
+        sampler = CandidateSampler(
+            model=pipeline.model,
+            tokenizer=pipeline.tokenizer,
+            model_path=model_path,
+            num_candidates=num_candidates,
+            temperature=temperature,
+        )
+        verifier_selector = VerifierSelector(sampler=sampler)
+    else:
+        logger.info("Initializing NL2SQL Evaluation Harness for model: %s", model_path)
 
     ts_evaluator = TestSuiteEvaluator()
     ex_evaluator = ExecutionEquivalenceEvaluator()
@@ -107,23 +131,41 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
             db_id = s.get("db_id", "default_db")
             gold_sql = s.get("gold_sql", "SELECT 1;")
 
-            trajectory = pipeline.run_interactive(
-                question=question,
-                db_path=db_path,
-                db_id=db_id,
-                max_turns=max_turns,
-                gold_sql=gold_sql,
-            )
-            final_sql = trajectory.final_query
+            if verifier_selector is not None:
+                schema_ddl = SQLiteEnvironment(db_path).get_schema_summary()
+                outcome = verifier_selector.run_pipeline(
+                    question=question,
+                    schema_ddl=schema_ddl,
+                    db_path=db_path,
+                    num_candidates=num_candidates,
+                    temperature=temperature,
+                )
+                final_sql = outcome.selected_query
+                exec_env = SQLiteEnvironment(db_path)
+                final_exec_res = exec_env.execute(final_sql)
+                final_success = final_exec_res.success
+                had_recovery = False
+            else:
+                trajectory = pipeline.run_interactive(
+                    question=question,
+                    db_path=db_path,
+                    db_id=db_id,
+                    max_turns=max_turns,
+                    gold_sql=gold_sql,
+                )
+                final_sql = trajectory.final_query
+                final_exec_res = trajectory.final_execution_result
+                final_success = trajectory.final_execution_success
+                had_recovery = trajectory.had_error_recovery
 
             # 1. Valid execution rate (VA)
-            if trajectory.final_execution_success:
+            if final_success:
                 valid_count += 1
 
             # 2. Execution accuracy (EX)
             db_env = SQLiteEnvironment(db_path)
             res_gold = db_env.execute(gold_sql)
-            ex_res = ex_evaluator.compare(trajectory.final_execution_result, res_gold)
+            ex_res = ex_evaluator.compare(final_exec_res, res_gold)
             if ex_res.is_equivalent:
                 ex_passed += 1
 
@@ -133,7 +175,7 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
                 ts_passed += 1
 
             # 4. Multi-turn recovery rate (MRR)
-            if trajectory.had_error_recovery and ts_res.passed_all_suites:
+            if had_recovery and ts_res.passed_all_suites:
                 recoveries += 1
 
         leaderboard[bench] = {

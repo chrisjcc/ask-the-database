@@ -1,0 +1,52 @@
+verifier:
+  model_name: "Qwen/Qwen2.5-Coder-7B-Instruct"
+  temperature: 0.0
+  pivot_count: 2
+  scoring_tokens:
+    "1": 0.00
+    "2": 0.25
+    "3": 0.50
+    "4": 0.75
+    "5": 1.00
+
+criteria:
+  intent_and_filters:
+    name: "intent_and_filters"
+    description: "Does the WHERE and HAVING clause accurately enforce all numerical, temporal, and string conditions requested in the question without hallucinated filters?"
+    weight: 0.35
+
+  schema_grounding_and_joins:
+    name: "schema_grounding_and_joins"
+    description: "Are all referenced tables and columns present in the schema DDL, and are multi-table JOINs connected across valid primary and foreign key relationships?"
+    weight: 0.30
+
+  aggregation_granularity:
+    name: "aggregation_granularity"
+    description: "Are aggregations (COUNT, SUM, AVG, MIN, MAX) applied to the correct dimensional level with appropriate GROUP BY expressions?"
+    weight: 0.20
+
+  result_sanity:
+    name: "result_sanity"
+    description: "Does the expected result set structure (projected columns, ordering, LIMIT) match the conversational intent without empty or runaway row returns?"
+    weight: 0.15
+
+prompt_template: |
+  You are an expert SQL Verification Agent.
+  Evaluate whether the candidate SQL query accurately and safely answers the user's question given the database schema.
+
+  [Database Schema DDL]:
+  {schema_ddl}
+
+  [User Question]:
+  {question}
+
+  [Candidate SQL Query]:
+  ```sql
+  {sql_query}
+  ```
+
+  Evaluation Criterion: {criterion_name}
+  Criterion Description: {criterion_description}
+
+  Score the candidate query from 1 (Completely Incorrect / Flawed) to 5 (Flawless / Fully Correct).
+  Respond with only a single digit score (1, 2, 3, 4, or 5):
