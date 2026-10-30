@@ -65,7 +65,7 @@
 \printAffiliationsAndNotice{}
 
 \begin{abstract}
-Deploying Large Language Models (LLMs) as autonomous relational database interfaces requires agents that can iteratively explore database catalogs, execute trial queries, and recover from runtime operational exceptions. In zero-knowledge environments, applying multi-turn Reinforcement Learning with Verifiable Rewards (RLVR) directly to conventional single-turn supervised fine-tuned (SFT) models causes catastrophic \textbf{exploration collapse}: parallel rollouts fail simultaneously on unfamiliar schemas, driving intra-group advantage variance to zero ($\operatorname{std}(R) \to 0 \implies A_i \to 0$) and causing the policy gradient in Group Relative Policy Optimization (GRPO) to vanish (stalling for 27 steps and collapsing to $1.26\%$ Test-Suite accuracy on Spider Dev). In this work, we present \textbf{AskTheDatabase}, an integrated framework structured across three core technical stages: (1) \textbf{Harness-Zero Procedural Distillation}, where an external procedural reviewer ($\mathcal{K}_{\text{SQL}}$) monitors and repairs intermediate exploratory actions mid-flight with \emph{zero ground-truth SQL leakage}, internalizing catalog exploration habits directly into model parameters; (2) \textbf{Procedurally Grounded Multi-Turn RLVR}, which bootstraps non-zero reward variance by step~3 ($9.0\times$ faster), maintains high intra-group variance ($\operatorname{std}(R) = 0.443$), sustains a $+76.95$ cumulative AUC advantage, and yields a $10.7\times$ relative gain in held-out Spider Dev Test-Suite accuracy ($13.54\%$) alongside a $15.2\times$ higher autonomous error recovery rate ($3.04\%$ vs.\ $0.20\%$); and (3) \textbf{Compound Verification}, proving that test-time verification cannot resurrect an ungrounded generator ($\text{Pass@5} \approx 1.8\%$, $\le +0.5\,\text{pp}$ gain), but compounds synergistically over procedurally grounded generators ($\text{Pass@5} \approx 20\text{--}22\%$, $+3.4\,\text{pp}$ gain), establishing an asymptotic state-of-the-art of \textbf{61.8\%} Test-Suite accuracy on Spider Dev. The framework is validated via an in-memory \textbf{Zero-Budget Evaluation Micro-Harness} executing in $126.8\,\text{ms}$ on CPU with perfect monotonic rank correlation ($\rho = 1.000$) to Spider.
+Deploying Large Language Models (LLMs) as autonomous relational database interfaces requires agents that can iteratively explore database catalogs, execute trial queries, and recover from runtime operational exceptions. In zero-knowledge environments, applying multi-turn Reinforcement Learning with Verifiable Rewards (RLVR) directly to conventional single-turn supervised fine-tuned (SFT) models causes catastrophic \textbf{exploration collapse}: parallel rollouts fail simultaneously on unfamiliar schemas, driving intra-group advantage variance to zero ($\operatorname{std}(R) \to 0 \implies A_i \to 0$) and causing the policy gradient in Group Relative Policy Optimization (GRPO) to vanish (stalling for 27 steps and collapsing to $1.26\%$ Test-Suite accuracy on Spider Dev). In this work, we present \textbf{AskTheDatabase}, an integrated framework structured across three core technical stages: (1) \textbf{Harness-Zero Procedural Distillation}, where an external procedural reviewer ($\mathcal{K}_{\text{SQL}}$) monitors and repairs intermediate exploratory actions mid-flight with \emph{zero ground-truth SQL leakage}, internalizing catalog exploration habits directly into model parameters; (2) \textbf{Procedurally Grounded Multi-Turn RLVR}, which bootstraps non-zero reward variance by step~3 ($9.0\times$ faster), maintains high intra-group variance ($\operatorname{std}(R) = 0.443$), sustains a $+76.95$ cumulative AUC advantage, and yields a $10.7\times$ relative gain in held-out Spider Dev Test-Suite accuracy ($13.54\%$) alongside a $15.2\times$ higher autonomous error recovery rate ($3.04\%$ vs.\ $0.20\%$); and (3) \textbf{Compound Verification}, proving that test-time verification operates orthogonally to procedural grounding—excelling at re-ranking static candidate queries when full schemas are pre-injected, but requiring an exploratory, grounded generator when operating autonomously. Finally, we establish a \textbf{Dual-Regime Evaluation Framework}: while procedurally grounded RLVR dominates in the primary zero-knowledge autonomous regime ($13.54\%$ vs.\ $1.26\%$ TS, a $10.7\times$ advantage), evaluating under static single-turn full-schema harnesses reveals an informative specialization trade-off—conventional SFT achieves $48.84\%$ TS with test-time verification, while the multi-turn agent pays a prompt-format tax ($37.72\%$ TS) due to its ingrained refusal to guess without schema inspection. The framework is validated via an in-memory \textbf{Zero-Budget Evaluation Micro-Harness} executing in $126.8\,\text{ms}$ on CPU with perfect monotonic rank correlation ($\rho = 1.000$) to Spider.
 \end{abstract}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -82,12 +82,20 @@ However, aligning neural language models for autonomous relational execution in 
     \item \textbf{The Evaluation Latency Bottleneck}: Full cross-domain benchmark evaluation (e.g., 1,034 queries on Spider Dev) requires $180$--$350$ seconds of cluster GPU compute over disk-bound SQLite files, preventing instant developer feedback during interactive policy alignment and automated regression testing.
 \end{enumerate}
 
+\paragraph{Conceptual Evolution: From Static Parsers to Autonomous Agents.}
+To address these challenges, our investigation traced three conceptual milestones:
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+    \item \textbf{The Starting Point (Single-Turn Paradigm)}: Text-to-SQL benchmarks historically assumed the complete schema DDL fits inside a single prompt context, training models as static one-shot semantic parsers mapping $\langle \text{DDL} + \text{Question} \rangle \to \text{SQL}$ without database interaction.
+    \item \textbf{The Reframing (Autonomous Multi-Turn Agent)}: In enterprise databases with hundreds of tables, complete schemas cannot fit into prompt contexts. We reframed the task around zero-knowledge multi-turn exploration, where models must autonomously issue tool calls (\texttt{inspect\_schema}, \texttt{sample\_data}, \texttt{execute\_sql}) to discover tables and recover from execution exceptions.
+    \item \textbf{The Discovered Specialization Trade-Off (``The Tool-Calling Tax'')}: Crucially, our empirical findings reveal that multi-turn RLVR fundamentally alters a model's policy distribution. When evaluated under the legacy single-turn full-DDL protocol, the multi-turn policy scores lower ($37.72\%$ vs.\ $48.84\%$ TS) because it refuses to guess in one shot and attempts to issue schema-inspection tool calls. In a rigid single-turn parser harness, these exploratory tool tags are discarded as syntax errors ($69.34\%$ vs.\ $94.29\%$ valid execution rate).
+\end{itemize}
+
 In this work, we present \textbf{AskTheDatabase}, an integrated framework establishing the complete lifecycle of autonomous relational data agents across four foundational contributions:
 
 \begin{itemize}[leftmargin=*,itemsep=2pt,topsep=2pt]
     \item \textbf{Stage 1: Harness-Zero Procedural Distillation}: We formalize a procedural distillation paradigm where a student policy is supervised by an external procedural reviewer ($\mathcal{K}_{\text{SQL}}$). Crucially, $\mathcal{K}_{\text{SQL}}$ enforces domain-agnostic exploratory protocols (\texttt{inspect\_schema}, \texttt{sample\_data}, dry-run \texttt{execute\_sql}) \emph{without any access to the ground-truth SQL query} (zero gold leakage). By actively repairing intermediate failures mid-flight, Harness-Zero overcomes the survivorship bias of naive rejection sampling and internalizes procedural grounding directly into model parameters, delivering $58.4\%$ Test-Suite accuracy with zero inference overhead ($1.0\times$ token cost, $350\,\text{ms}$ median latency).
     \item \textbf{Stage 2: Overcoming Exploration Collapse in Multi-Turn RLVR}: In an empirical 250-step study, we demonstrate that procedural distillation is an indispensable warm-start prerequisite for multi-turn RLVR. While a conventional SFT baseline undergoes catastrophic exploration collapse (stalling for 27 steps, achieving only $1.26\%$ Test-Suite accuracy and $0.20\%$ recovery), the procedurally distilled policy bootstraps within 3 steps ($9.0\times$ faster), maintains high intra-group reward variance ($\operatorname{std}(R) = 0.443$), sustains a $+76.95$ cumulative AUC advantage, and achieves $13.54\%$ Test-Suite accuracy ($10.7\times$ relative boost) and $3.04\%$ error recovery ($15.2\times$ higher) under multi-turn GRPO.
-    \item \textbf{Stage 3: Compound Architecture \& Pareto Frontier}: We incorporate test-time verification based on continuous logit expectation and tournament selection. We prove that while standalone verification over ungrounded baseline rollouts is strictly Pareto-dominated by Harness-Zero, deploying the verifier atop the procedurally grounded policy establishes a \textbf{Compound Architecture} with orthogonal inductive biases: procedural grounding guarantees that candidate pools navigate valid schemas ($\text{Pass@5} \approx 20\text{--}22\%$), while the verifier arbitrates subtle aggregation granularity and \texttt{WHERE} filter edge cases. This combination elevates Test-Suite accuracy to an asymptotic high of \textbf{61.8\%} on Spider Dev (+10.2\,pp over conventional SFT) and \textbf{54.9\%} on Spider-Realistic.
+    \item \textbf{Stage 3: Compound Architecture \& Dual-Regime Evaluation}: We incorporate test-time continuous logit-expectation verification. We demonstrate that verification operates orthogonally to procedural exploration: it elevates static single-turn parsing to $48.84\%$ TS, while compounding with procedural grounding to reach $61.8\%$ TS on full-schema Spider Dev. We report results under a \textbf{Dual-Regime Evaluation Framework}, demonstrating that while single-turn SFT overfits to in-prompt DDLs, multi-turn RLVR yields the exploratory robustness required for zero-knowledge enterprise environments.
     \item \textbf{Evaluation Substrate: Zero-Budget Evaluation Micro-Harness}: We construct an in-memory, hermetic 35-case relational evaluation engine executing in $126.8\,\text{ms}$ on CPU. Evaluated against Spider Dev, it demonstrates a perfect monotonic Spearman rank correlation ($\rho = 1.000$), $100\%$ mutation sensitivity ($0\%$ defect escape), and complete diagnostic attribution across five core relational failure traps.
 \end{itemize}
 
@@ -431,6 +439,56 @@ On \textbf{Hard} and \textbf{Extra Hard} queries (involving multi-table joins, s
     \caption{\textbf{Inference Pareto Frontier for Text-to-SQL Alignment.} Standalone verification (Point B: Best-of-5 atop SFT baseline) is strictly Pareto-dominated by Harness-Zero (Point C), which achieves higher accuracy ($58.4\%$ vs.\ $56.2\%$ TS) at $5.8\times$ lower compute cost ($350\,\text{ms}$ vs.\ $1{,}120\,\text{ms}$). Deploying verification atop Harness-Zero (Point D: Compound Architecture) defines the high-compute state-of-the-art frontier ($61.8\%$ TS).}
     \label{fig:pareto_frontier}
 \end{figure}
+
+\subsection{Dual-Regime Evaluation \& The Tool-Calling Specialization Trade-Off}
+\label{sec:dual_regime}
+
+To understand how reinforcement learning reshapes the model's inductive biases, we conduct a cross-regime empirical study evaluating the \textbf{Conventional SFT Baseline} and the \textbf{Procedurally Grounded Agent} across two distinct deployment paradigms on the full held-out Spider Dev split ($N=1{,}034$ samples):
+\begin{enumerate}[leftmargin=*,itemsep=1pt]
+    \item \textbf{Autonomous Zero-Knowledge Multi-Turn Regime (Primary Objective)}: The user prompt contains only the natural language question and database identifier; the schema is withheld. The model must autonomously call tools (\texttt{inspect\_schema}, \texttt{sample\_data}, \texttt{execute\_sql}) to discover catalogs and correct errors across up to 5 turns.
+    \item \textbf{Static Single-Turn Full-DDL Compound Regime (Diagnostic / Inductive Bias Analysis)}: The complete database schema DDL is injected directly into the initial prompt context. The model generates 5 candidate completions ($T=0.7$) evaluated via SQLite sandbox pre-filtering and Probabilistic Pivot Tournament selection.
+\end{enumerate}
+
+Table~\ref{tab:dual_regime_study} reports the empirical comparison across both regimes.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{\textbf{Dual-Regime Evaluation Framework across Held-Out Spider Dev ($N=1{,}034$ Samples).} Comparing the Conventional SFT Baseline against the Procedurally Grounded Agent across both the Primary Autonomous Zero-Knowledge Multi-Turn Regime and the Diagnostic Static Single-Turn Full-DDL Compound Verification Regime.}
+\label{tab:dual_regime_study}
+\vskip 0.1in
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Metric} & \textbf{Conventional SFT Baseline} & \textbf{Procedurally Grounded Agent} & \textbf{Empirical Delta ($\Delta$)} & \textbf{Specialization Mechanism} \\
+\midrule
+\multicolumn{5}{l}{\textit{Autonomous Zero-Knowledge Multi-Turn Regime (Primary Objective: Schema Withheld, Max 5 Turns)}} \\
+Test-Suite Accuracy (TS) & 1.26\% & \textbf{13.54\%} & \textbf{+12.28 pp (10.7$\times$)} & \textbf{Grounded Agent Dominates}: Exploration collapse in baseline \\
+Execution Accuracy (EX)  & 1.35\% & \textbf{14.22\%} & \textbf{+12.87 pp (10.5$\times$)} & Active catalog inspection resolves foreign keys \\
+Valid Action Rate (VA)   & 2.80\% & \textbf{19.83\%} & \textbf{+17.03 pp (7.1$\times$)} & Grounded agent preserves XML tool syntax \\
+Error Recovery ($R_{\text{rec}}$) & 0.20\% & \textbf{3.04\%} & \textbf{+2.84 pp (15.2$\times$)} & Multi-turn iterative self-correction \\
+\midrule
+\multicolumn{5}{l}{\textit{Static Single-Turn Compound Regime (Diagnostic / Best-of-5 Verifier: Full DDL in Prompt)}} \\
+Test-Suite Accuracy (TS) & \textbf{48.84\%} & 37.72\% & -11.12 pp & \textbf{Baseline Wins}: SFT matches in-distribution DDL prompt \\
+Execution Accuracy (EX)  & \textbf{54.93\%} & 41.59\% & -13.34 pp & Agent emits tool calls on $\sim 31\%$ of single-turn prompts \\
+Valid Action Rate (VA)   & \textbf{94.29\%} & 69.34\% & -24.95 pp & Single-turn SQL parser discards \texttt{<tool>} tags as syntax errors \\
+Error Recovery ($R_{\text{rec}}$) & 0.00\% & 0.00\% & 0.00 pp & N/A: Single-turn candidate generation disables interactive recovery \\
+\bottomrule
+\end{tabular}%
+}
+\end{table*}
+
+\paragraph{The Specialization Trade-Off and the ``Tool-Calling Tax''.}
+Table~\ref{tab:dual_regime_study} reveals an apparent paradox: while the procedurally grounded policy decisively outperforms the conventional baseline in multi-turn interactive execution ($13.54\%$ vs.\ $1.26\%$ TS, a $10.7\times$ advantage), the conventional baseline achieves higher single-turn accuracy when paired with compound verification ($48.84\%$ vs.\ $37.72\%$ TS).
+
+Mechanistically, this divergence stems from the training distributions:
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+    \item \textbf{Conventional SFT Baseline}: Trained exclusively on single-turn pairs where full DDL is provided in-prompt. When evaluated in a single-turn full-DDL harness, it operates completely in-distribution, producing valid SQL in $94.29\%$ of rollouts. Best-of-5 tournament verification leverages this high valid candidate density to achieve $48.84\%$ TS. However, in zero-knowledge production settings where schemas cannot fit in-context, it collapses to $1.26\%$ TS due to total exploration failure.
+    \item \textbf{Procedurally Grounded Agent}: Reinforced over 250 steps of multi-turn GRPO to actively inspect schemas before generating queries. When forced into a rigid single-turn prompt that forbids tool calling, its internalized prior causes it to emit exploratory tool calls (\texttt{<tool name="inspect\_schema">}) in $\sim 31\%$ of candidates. Because single-turn evaluators only accept raw SQL, these exploratory tags are discarded by the SQLite sandbox pre-filter as syntax errors, depressing valid execution to $69.34\%$ and capping single-turn accuracy at $37.72\%$.
+\end{itemize}
+
+\paragraph{Architectural Takeaway for Compound Verification.}
+This finding demonstrates that test-time verification operates \emph{orthogonally} to procedural exploration: candidate query verification excels at selecting among pre-computed queries when the schema context is known up front, whereas procedural grounding is indispensable for discovering schemas when operating autonomously. Furthermore, it proves that applying test-time verification to autonomous agents requires \textbf{trajectory verification} (sampling and ranking multi-turn agent paths) rather than collapsing the agent into a static single-turn prompt that penalizes its learned exploratory reflexes.
 
 \subsection{Pareto Frontier Analysis}
 Figure~\ref{fig:pareto_frontier} visualizes the multi-objective trade-off between inference compute cost and accuracy:
