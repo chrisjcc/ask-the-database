@@ -1,10 +1,17 @@
-float_tolerance: 1e-4
-use_test_suite: true
-num_mutations: 4
+# -----------------------------------------------------------------------------
+# Verifiable SQL Test-Suite Reward Rubric Configuration (AskTheDatabase)
+# -----------------------------------------------------------------------------
+# Configuration for strict test-suite evaluation emphasizing mutated database passing.
 
+# --- Execution & Verification Tolerances ---
+float_tolerance: 1.0e-4                    # Numeric comparison tolerance for floating point aggregations
+use_test_suite: true                       # Evaluate against synthetic mutant databases
+num_mutations: 4                           # Number of database mutations per test suite evaluation
+
+# --- Component Reward & Penalty Weights ---
 weights:
-  syntax_penalty: -1.0
-  exec_penalty: -0.5
-  schema_bonus: 0.2
-  base_execution_reward: 0.5
-  test_suite_reward: 0.5
+  syntax_penalty: -1.0                     # Penalty for AST syntax error or forbidden SQL mutation
+  exec_penalty: -0.5                       # Penalty for runtime execution failure (e.g. unknown table/column)
+  schema_bonus: 0.2                        # Bonus for explicitly inspecting relevant schema catalogs
+  base_execution_reward: 0.5               # Reward for execution equivalence on original database
+  test_suite_reward: 0.5                   # Reward for passing all mutated database test suites

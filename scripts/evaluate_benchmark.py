@@ -1,5 +1,9 @@
 """Comprehensive evaluation harness across Spider and its robustness variants."""
 
+import ask_the_database  # noqa: F401 - Triggers sanitize_user_site() before any third-party imports
+
+# isort: split
+
 import json
 import logging
 from pathlib import Path
@@ -41,6 +45,19 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
 
     logger.info("Initializing NL2SQL Evaluation Harness for model: %s", model_path)
     pipeline = NL2SQLPipeline(model_path=model_path, max_turns=max_turns)
+    if pipeline.model is None and model_path:
+        if pipeline.load_error:
+            raise RuntimeError(
+                f"Failed to load model weights from '{model_path}': {pipeline.load_error}. "
+                "Aborting evaluation to prevent generating misleading fallback results."
+            )
+        logger.warning(
+            "⚠️  WARNING: Could not load trained model weights from '%s'! "
+            "Pipeline is running in OFFLINE MOCK/FALLBACK mode. "
+            "Results will NOT reflect real model performance.",
+            model_path,
+        )
+
     ts_evaluator = TestSuiteEvaluator()
     ex_evaluator = ExecutionEquivalenceEvaluator()
 

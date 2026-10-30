@@ -414,10 +414,12 @@ Given the unambiguous **GO** adjudication across all 4 gates, the Zero-Budget Ev
 def main() -> int:
     """CLI driver for orchestrating the MVE evaluation."""
     parser = argparse.ArgumentParser(
-        description="Run Zero-Budget Evaluation Harness MVE benchmark and gate adjudication."
+        description="Run Zero-Budget Evaluation Harness MVE benchmark and gate adjudication.",
+        allow_abbrev=False,
     )
     parser.add_argument(
         "--output-summary",
+        dest="output_summary",
         type=Path,
         default=Path("results/zero_budget_mve_summary.json"),
         help="Path to write JSON summary artifact.",
@@ -427,6 +429,13 @@ def main() -> int:
         type=Path,
         default=Path("docs/research/zero-budget-eval-harness/mve_results.md"),
         help="Path to write research markdown report.",
+    )
+    parser.add_argument(
+        "--checkpoint",
+        dest="checkpoint",
+        type=str,
+        default=None,
+        help="Optional path to model checkpoint or LoRA adapter directory to evaluate live.",
     )
     parser.add_argument(
         "--baseline-preds",
@@ -440,13 +449,94 @@ def main() -> int:
         default=None,
         help="Optional path to Harness-Zero model predictions JSONL.",
     )
+    parser.add_argument(
+        "--max-turns",
+        type=int,
+        default=5,
+        help="Maximum interactive agent turns when evaluating a checkpoint (default: 5).",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run without loading real model weights for fast testing.",
+    )
     args = parser.parse_args()
+
+    baseline_preds_path = args.baseline_preds
+    harness_zero_preds_path = args.harness_zero_preds
+    checkpoint_gate: dict[str, Any] | None = None
+
+    if args.checkpoint:
+        ckpt_path = Path(args.checkpoint)
+        ckpt_name = ckpt_path.name
+        print(f"Evaluating candidate checkpoint live on 35 smoke cases: {args.checkpoint}...")
+
+        # Import smoke prediction utilities
+        scripts_dir = Path(__file__).resolve().parent
+        if str(scripts_dir) not in sys.path:
+            sys.path.insert(0, str(scripts_dir))
+        from generate_smoke_predictions import (
+            generate_predictions,
+            load_smoke_cases,
+            setup_temporary_database,
+        )
+
+        cases_file = Path("data/fixtures/smoke_cases.jsonl")
+        fixtures_sql = Path("data/fixtures/seed_fixtures.sql")
+        cases = load_smoke_cases(cases_file)
+        temp_db_path = setup_temporary_database(fixtures_sql)
+        try:
+            preds = generate_predictions(
+                model_path=args.checkpoint,
+                cases=cases,
+                db_path=temp_db_path,
+                max_turns=args.max_turns,
+                device="auto",
+                dry_run=args.dry_run,
+            )
+        finally:
+            if temp_db_path.exists():
+                temp_db_path.unlink()
+
+        total_p = len(preds)
+        inspected_count = sum(1 for p in preds if p.get("inspected_schema", False))
+        ast_crash_count = sum(1 for p in preds if p.get("ast_crash", False))
+        inspection_rate = (inspected_count / total_p * 100.0) if total_p else 0.0
+        gate_passed = (inspection_rate >= 80.0) and (ast_crash_count == 0)
+
+        checkpoint_gate = {
+            "checkpoint": args.checkpoint,
+            "total_cases": total_p,
+            "schema_inspection_rate": round(inspection_rate, 2),
+            "schema_inspection_threshold": 80.0,
+            "schema_inspection_passed": inspection_rate >= 80.0,
+            "ast_crash_count": ast_crash_count,
+            "ast_crash_threshold": 0,
+            "ast_crash_passed": ast_crash_count == 0,
+            "gate_verdict": "GO" if gate_passed else "NO-GO",
+            "ready_for_stage_4_rlvr": gate_passed,
+        }
+
+        out_preds_dir = Path("results")
+        out_preds_dir.mkdir(parents=True, exist_ok=True)
+        ckpt_preds_file = out_preds_dir / f"{ckpt_name}_smoke_preds.jsonl"
+        with open(ckpt_preds_file, "w", encoding="utf-8") as f:
+            for p in preds:
+                f.write(json.dumps(p) + "\n")
+        print(f"Generated candidate predictions: {ckpt_preds_file}")
+
+        if "baseline" in ckpt_name.lower():
+            baseline_preds_path = ckpt_preds_file
+        else:
+            harness_zero_preds_path = ckpt_preds_file
 
     print("Running Zero-Budget Evaluation Harness Minimum Viable Experiment (MVE)...")
     result = run_benchmark(
-        baseline_preds_path=args.baseline_preds,
-        harness_zero_preds_path=args.harness_zero_preds,
+        baseline_preds_path=baseline_preds_path,
+        harness_zero_preds_path=harness_zero_preds_path,
     )
+    if checkpoint_gate is not None:
+        result["checkpoint_gate"] = checkpoint_gate
 
     # Save summary JSON
     args.output_summary.parent.mkdir(parents=True, exist_ok=True)

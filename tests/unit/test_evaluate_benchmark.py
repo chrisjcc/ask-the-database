@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from ask_the_database.inference.pipeline import NL2SQLPipeline
 from scripts.evaluate_benchmark import run_benchmark_evaluation
 
@@ -69,3 +71,52 @@ def test_run_benchmark_evaluation_with_custom_samples(
     assert leaderboard["spider"]["test_suite_accuracy_ts"] == 100.0
 
     assert summary_file.exists()
+
+
+def test_nl2sql_pipeline_resolves_rlvr_policy_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test NL2SQLPipeline resolves underlying checkpoint from rlvr_policy_config.json."""
+    import json
+    from unittest.mock import MagicMock
+
+    import peft
+    import transformers
+
+    # Mock an SFT adapter directory
+    sft_dir = tmp_path / "models" / "sft" / "harness_zero"
+    sft_dir.mkdir(parents=True)
+    (sft_dir / "adapter_config.json").write_text(
+        json.dumps({"base_model_name_or_path": "mock_base", "peft_type": "LORA"})
+    )
+
+    # Mock an RLVR directory that only has rlvr_policy_config.json
+    rlvr_dir = tmp_path / "models" / "rlvr" / "harness_zero_grpo"
+    rlvr_dir.mkdir(parents=True)
+    (rlvr_dir / "rlvr_policy_config.json").write_text(
+        json.dumps(
+            {
+                "adapter": "SkyRLSQLEnvironment",
+                "model_path": str(sft_dir),
+                "max_turns": 5,
+                "steps": 250,
+            }
+        )
+    )
+
+    mock_tok = MagicMock()
+    mock_model = MagicMock()
+    mock_peft = MagicMock()
+
+    monkeypatch.setattr(transformers.AutoTokenizer, "from_pretrained", lambda *a, **kw: mock_tok)
+    monkeypatch.setattr(
+        transformers.AutoModelForCausalLM, "from_pretrained", lambda *a, **kw: mock_model
+    )
+    monkeypatch.setattr(peft.PeftModel, "from_pretrained", lambda *a, **kw: mock_peft)
+
+    pipe = NL2SQLPipeline(model_path=str(rlvr_dir))
+
+    assert pipe.model_path == str(rlvr_dir)
+    assert pipe.tokenizer is mock_tok
+    assert pipe.model is mock_peft
+    assert pipe.load_error is None

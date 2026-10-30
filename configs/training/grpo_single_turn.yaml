@@ -1,22 +1,42 @@
-output_dir: "models/grpo_baseline/final"
-learning_rate: 1.0e-5
-num_train_epochs: 1
-per_device_train_batch_size: 1
-gradient_accumulation_steps: 8
-num_generations: 8
-max_completion_length: 512
-beta: 0.04
-logging_steps: 1
-save_strategy: "epoch"
-report_to: "none"
-max_steps: -1
+# -----------------------------------------------------------------------------
+# GRPO Single-Turn Configuration (AskTheDatabase)
+# -----------------------------------------------------------------------------
+# Configuration for single-turn reinforcement learning using Group Relative
+# Policy Optimization (GRPO) with verifiable SQLite test-suite rewards.
 
+# --- Global & Paths ---
+output_dir: "models/grpo_baseline/final"   # Directory to save model checkpoints
+
+# --- Batching & Steps ---
+per_device_train_batch_size: 1             # Batch size per GPU
+gradient_accumulation_steps: 8             # Number of gradient accumulation steps (batch * accum >= num_generations)
+num_train_epochs: 1                        # Total number of training epochs
+max_steps: -1                              # Max training steps (-1 uses num_train_epochs)
+
+# --- Optimization & Loss ---
+learning_rate: 1.0e-5                      # Policy initial learning rate
+beta: 0.04                                 # KL penalty coefficient
+bf16: false                                # Use bfloat16 precision (auto-detected on Ampere+)
+
+# --- Logging & Saving ---
+logging_steps: 1                           # How often to log training metrics
+save_strategy: "epoch"                     # How often to save a checkpoint ("epoch", "steps", "no")
+report_to: "wandb"                         # Integration to report metrics to ("wandb", "none")
+wandb:
+  enabled: true                            # Enable Weights & Biases telemetry
+  project: "ask-the-database"              # Target W&B project name
+
+# --- Generation & Sequences ---
+num_generations: 8                         # Number of generations G per prompt for relative scoring
+max_completion_length: 512                 # Maximum length of the generated SQL completion
+
+# --- PEFT / LoRA Adapter ---
 lora:
-  r: 16
-  lora_alpha: 32
-  lora_dropout: 0.05
-  bias: "none"
-  target_modules:
+  r: 16                                    # LoRA rank dimension
+  lora_alpha: 32                           # LoRA scaling factor (alpha / r)
+  lora_dropout: 0.05                       # LoRA dropout probability
+  bias: "none"                             # Bias training mode ("none", "all", "lora_only")
+  target_modules:                          # Target projection layers for adapter injection
     - "q_proj"
     - "k_proj"
     - "v_proj"

@@ -115,18 +115,21 @@ def load_sft_dataset(
                 continue
             item = json.loads(line)
             question = item.get("question", "")
-            schema_ddl = item.get("schema_ddl", "")
             gold_sql = item.get("gold_sql", "")
             db_path = item.get("db_path", "")
             instance_id = item.get("instance_id", "")
             db_id = item.get("db_id", "")
 
-            messages = format_chatml_messages(
-                question=question,
-                schema_ddl=schema_ddl,
-                gold_sql=gold_sql,
-                system_prompt=system_prompt,
-            )
+            if "messages" in item and isinstance(item["messages"], list):
+                messages = item["messages"]
+            else:
+                schema_ddl = item.get("schema_ddl", "")
+                messages = format_chatml_messages(
+                    question=question,
+                    schema_ddl=schema_ddl,
+                    gold_sql=gold_sql,
+                    system_prompt=system_prompt,
+                )
 
             records.append(
                 {

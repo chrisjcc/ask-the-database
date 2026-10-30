@@ -1,3 +1,10 @@
+# -----------------------------------------------------------------------------
+# DVC Experiment Parameters
+# -----------------------------------------------------------------------------
+# These values define the baseline/default parameter state for data preprocessing
+# and model training pipelines. W&B sweeps override these values on a per-experiment
+# trial basis via scripts/run_sweep_trial.py without altering base Hydra configs.
+
 preprocess:
   dataset_name: "spider"
   include_skyrl_653: true
@@ -11,3 +18,9 @@ sft:
   num_train_epochs: 3
   lora:
     r: 16
+
+grpo:
+  learning_rate: 1.0e-6
+  beta_kl: 0.04
+  group_size: 4
+  max_steps: 250
