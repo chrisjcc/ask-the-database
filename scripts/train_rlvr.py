@@ -26,7 +26,7 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
     env = SkyRLSQLEnvironment(config=training_cfg, reward_evaluator=reward_evaluator)
 
     dry_run = bool(getattr(cfg, "dry_run", False) or getattr(training_cfg, "dry_run", False))
-    num_rollouts = int(getattr(training_cfg, "num_rollouts_per_prompt", 8))
+    num_rollouts = int(getattr(training_cfg, "num_rollouts_per_prompt", 4))
     max_steps = int(getattr(training_cfg, "max_steps", 250))
     if max_steps <= 0:
         max_steps = 250
@@ -279,6 +279,18 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                     indent=2,
                 )
             )
+
+            # Persist model adapter weights and tokenizer if pipeline has them loaded
+            if pipeline.model is not None:
+                try:
+                    pipeline.model.save_pretrained(out_path)
+                except Exception as e:
+                    logger.warning("Could not save model to %s: %s", out_path, e)
+            if pipeline.tokenizer is not None:
+                try:
+                    pipeline.tokenizer.save_pretrained(out_path)
+                except Exception as e:
+                    logger.warning("Could not save tokenizer to %s: %s", out_path, e)
 
     if wandb_run is not None:
         wandb_run.finish()

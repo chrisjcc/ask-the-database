@@ -6,6 +6,7 @@ verifiable database verification engine.
 
 import logging
 import math
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -169,7 +170,30 @@ class TRLGRPOAdapter(BaseRLAdapter):
         beta = float(getattr(training_cfg, "beta", 0.04))
         logging_steps = int(getattr(training_cfg, "logging_steps", 1))
         save_strategy = str(getattr(training_cfg, "save_strategy", "epoch"))
-        report_to = str(getattr(training_cfg, "report_to", "none"))
+        report_to = str(getattr(training_cfg, "report_to", "wandb"))
+        wandb_cfg = getattr(training_cfg, "wandb", None)
+        if wandb_cfg is not None and hasattr(wandb_cfg, "enabled"):
+            if not wandb_cfg.enabled:
+                report_to = "none"
+            elif report_to == "none":
+                report_to = "wandb"
+
+        if report_to == "wandb":
+            try:
+                import wandb  # noqa: F401
+
+                project_name = getattr(wandb_cfg, "project", None) or getattr(
+                    self.cfg, "project_name", "ask-the-database"
+                )
+                if project_name and not os.environ.get("WANDB_PROJECT"):
+                    os.environ["WANDB_PROJECT"] = str(project_name)
+            except ImportError:
+                logger.warning(
+                    "Weights & Biases (wandb) is not installed in the environment. "
+                    "Falling back to report_to='none'. Install with `pip install wandb`."
+                )
+                report_to = "none"
+
         max_steps = int(getattr(training_cfg, "max_steps", -1))
 
         return GRPOConfig(

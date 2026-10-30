@@ -102,12 +102,26 @@ def compare_runs(
     eff_a = calculate_sample_efficiency_metrics(rewards_a)
     eff_b = calculate_sample_efficiency_metrics(rewards_b)
 
-    ts_a = eval_a.get("spider", {}).get("test_suite_accuracy_ts", 0.0)
-    ts_b = eval_b.get("spider", {}).get("test_suite_accuracy_ts", 0.0)
-    ex_a = eval_a.get("spider", {}).get("execution_accuracy_ex", 0.0)
-    ex_b = eval_b.get("spider", {}).get("execution_accuracy_ex", 0.0)
-    mrr_a = eval_a.get("spider", {}).get("recovery_rate_mrr", 0.0)
-    mrr_b = eval_b.get("spider", {}).get("recovery_rate_mrr", 0.0)
+    def _extract_metrics(eval_dict: dict[str, Any]) -> dict[str, Any]:
+        if not eval_dict:
+            return {}
+        for key in ["spider_dev", "spider", "spider_realistic"]:
+            if key in eval_dict:
+                return eval_dict[key]
+        for val in eval_dict.values():
+            if isinstance(val, dict) and "test_suite_accuracy_ts" in val:
+                return val
+        return {}
+
+    bench_a = _extract_metrics(eval_a)
+    bench_b = _extract_metrics(eval_b)
+
+    ts_a = bench_a.get("test_suite_accuracy_ts", 0.0)
+    ts_b = bench_b.get("test_suite_accuracy_ts", 0.0)
+    ex_a = bench_a.get("execution_accuracy_ex", 0.0)
+    ex_b = bench_b.get("execution_accuracy_ex", 0.0)
+    mrr_a = bench_a.get("recovery_rate_mrr", 0.0)
+    mrr_b = bench_b.get("recovery_rate_mrr", 0.0)
 
     delta_ts = round(ts_b - ts_a, 2)
     auc_diff = round(eff_b["area_under_curve"] - eff_a["area_under_curve"], 2)

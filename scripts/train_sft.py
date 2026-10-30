@@ -27,7 +27,9 @@ def main(cfg: DictConfig) -> None:
     dry_run = bool(getattr(cfg, "dry_run", False))
     if dry_run:
         logger.info("Dry-run mode active. Validating dataset and configs...")
-        custom_dataset = getattr(cfg.training, "dataset_path", None)
+        custom_dataset = getattr(cfg.training, "dataset_path", None) or getattr(
+            cfg.training, "train_data_path", None
+        )
         train_path = (
             Path(custom_dataset)
             if custom_dataset

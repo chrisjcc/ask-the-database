@@ -78,6 +78,7 @@ class NL2SQLPipeline:
         self.max_turns = max_turns
         self.model = model
         self.tokenizer = tokenizer
+        self.load_error: str | None = None
 
         if self.model is None and self.model_path and Path(self.model_path).exists():
             self._try_load_model()
@@ -85,21 +86,45 @@ class NL2SQLPipeline:
     def _try_load_model(self) -> None:
         """Attempt loading PyTorch / Hugging Face model and tokenizer."""
         try:
+            import json
+            import logging
+
             import torch
+            from peft import PeftModel
             from transformers import AutoModelForCausalLM, AutoTokenizer
 
             assert self.model_path is not None
             device_target = self.device
             if device_target == "auto":
                 device_target = "auto" if torch.cuda.is_available() else "cpu"
-            # Check if this is a PEFT adapter directory
+
             path_obj = Path(self.model_path)
-            adapter_conf_path = path_obj / "adapter_config.json"
-            if adapter_conf_path.exists():
-                import json
+            target_path = path_obj
 
-                from peft import PeftModel
+            # If this is an RLVR output directory without local adapter weights, inspect rlvr_policy_config.json
+            if (
+                path_obj.is_dir()
+                and not (path_obj / "adapter_config.json").exists()
+                and not (path_obj / "config.json").exists()
+            ):
+                policy_conf_path = path_obj / "rlvr_policy_config.json"
+                if policy_conf_path.exists():
+                    with open(policy_conf_path, encoding="utf-8") as f:
+                        policy_conf = json.load(f)
+                    underlying = policy_conf.get("model_path")
+                    if underlying and Path(underlying).exists():
+                        target_path = Path(underlying)
+                        logging.getLogger(__name__).info(
+                            "Resolved RLVR checkpoint '%s' to underlying policy '%s'",
+                            self.model_path,
+                            target_path,
+                        )
 
+            # Check if target is a PEFT adapter directory
+            adapter_conf_path = (
+                target_path / "adapter_config.json" if target_path.is_dir() else None
+            )
+            if adapter_conf_path and adapter_conf_path.exists():
                 with open(adapter_conf_path, encoding="utf-8") as f:
                     conf = json.load(f)
                 base_model_name = conf.get(
@@ -114,13 +139,13 @@ class NL2SQLPipeline:
                     device_map=device_target,
                     trust_remote_code=True,
                 )
-                self.model = PeftModel.from_pretrained(base_model, str(path_obj))
+                self.model = PeftModel.from_pretrained(base_model, str(target_path))
             else:
                 self.tokenizer = AutoTokenizer.from_pretrained(
-                    self.model_path, trust_remote_code=True
+                    str(target_path), trust_remote_code=True
                 )
                 self.model = AutoModelForCausalLM.from_pretrained(
-                    self.model_path,
+                    str(target_path),
                     torch_dtype=self.torch_dtype or torch.bfloat16,
                     device_map=device_target,
                     trust_remote_code=True,
@@ -128,6 +153,7 @@ class NL2SQLPipeline:
         except Exception as e:
             import logging
 
+            self.load_error = str(e)
             logging.getLogger(__name__).warning(
                 "Could not load model weights from %s: %s", self.model_path, e
             )
@@ -145,7 +171,19 @@ class NL2SQLPipeline:
         if self.model is not None and self.tokenizer is not None:
             import torch
 
-            prompt = format_chatml_prompt(messages)
+            prompt: str = ""
+            if hasattr(self.tokenizer, "apply_chat_template"):
+                try:
+                    prompt = str(
+                        self.tokenizer.apply_chat_template(
+                            messages, tokenize=False, add_generation_prompt=True
+                        )
+                    )
+                except Exception:
+                    prompt = format_chatml_prompt(messages)
+            else:
+                prompt = format_chatml_prompt(messages)
+
             inputs = self.tokenizer(prompt, return_tensors="pt")
             if hasattr(self.model, "device"):
                 inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
@@ -172,9 +210,9 @@ class NL2SQLPipeline:
         tables = available_tables or ["demo_table"]
         target_table = tables[0]
 
-        if not assistant_msgs:
+        if not assistant_msgs and self.max_turns > 1:
             return f'<tool name="inspect_schema">["{target_table}"]</tool>'
-        if len(assistant_msgs) == 1:
+        if len(assistant_msgs) == 1 and self.max_turns > 2:
             return f'<tool name="sample_data">{target_table}</tool>'
 
         query = default_query or f"SELECT * FROM {target_table} LIMIT 5;"
@@ -208,11 +246,14 @@ class NL2SQLPipeline:
         had_intermediate_error = False
         step_reward = 0.0
 
+        # In unit-test mock mode (when model_path is None), allow default_query to be gold_sql
+        mock_default = gold_sql if self.model_path is None else None
+
         for turn_idx in range(1, effective_max_turns + 1):
             completion = self.generate_step(
                 env.history,
                 available_tables=available_tables,
-                default_query=gold_sql,
+                default_query=mock_default,
             )
             obs, step_reward, done, info = env.step(completion)
 

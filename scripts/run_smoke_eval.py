@@ -13,6 +13,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from ask_the_database.evaluation import HarnessSummary, ZeroBudgetHarness
 
@@ -103,7 +104,8 @@ def print_summary_report(summary: HarnessSummary, title: str) -> None:
 def main() -> int:
     """Main CLI driver for running the zero-budget smoke evaluation."""
     parser = argparse.ArgumentParser(
-        description="Run AskTheDatabase Zero-Budget Evaluation Harness (< 3.0s local smoke check)."
+        description="Run AskTheDatabase Zero-Budget Evaluation Harness (< 3.0s local smoke check).",
+        allow_abbrev=False,
     )
     group = parser.add_mutually_exclusive_group()
     group.add_argument(
@@ -121,14 +123,33 @@ def main() -> int:
         type=Path,
         help="Path to JSONL file with {'id': str, 'sql': str} predictions to evaluate.",
     )
+    group.add_argument(
+        "--checkpoint",
+        dest="checkpoint",
+        type=str,
+        help="Path to fine-tuned model checkpoint or LoRA adapter directory to evaluate live.",
+    )
     parser.add_argument(
         "--output-json",
+        dest="output_json",
         type=Path,
         help="Optional path to export evaluation summary JSON.",
+    )
+    parser.add_argument(
+        "--max-turns",
+        type=int,
+        default=5,
+        help="Maximum interactive agent turns when evaluating a checkpoint (default: 5).",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run without loading real model weights for fast testing.",
     )
     args = parser.parse_args()
 
     harness = ZeroBudgetHarness()
+    checkpoint_gate: dict[str, Any] | None = None
 
     if args.flawed:
         title = "Diagnostic Flaw Simulation"
@@ -148,6 +169,61 @@ def main() -> int:
                 pairs.append((cases_by_id[cid], p.get("sql") or p.get("query", "")))
 
         summary = harness.evaluate_batch(pairs)
+    elif args.checkpoint:
+        title = f"Checkpoint Evaluation ({Path(args.checkpoint).name})"
+        cases_file = Path("data/fixtures/smoke_cases.jsonl")
+        fixtures_sql = Path("data/fixtures/seed_fixtures.sql")
+
+        scripts_dir = Path(__file__).resolve().parent
+        if str(scripts_dir) not in sys.path:
+            sys.path.insert(0, str(scripts_dir))
+        from generate_smoke_predictions import (
+            generate_predictions,
+            load_smoke_cases,
+            setup_temporary_database,
+        )
+
+        cases = load_smoke_cases(cases_file)
+        temp_db_path = setup_temporary_database(fixtures_sql)
+        try:
+            preds = generate_predictions(
+                model_path=args.checkpoint,
+                cases=cases,
+                db_path=temp_db_path,
+                max_turns=args.max_turns,
+                device="auto",
+                dry_run=args.dry_run,
+            )
+        finally:
+            if temp_db_path.exists():
+                temp_db_path.unlink()
+
+        total_p = len(preds)
+        inspected_count = sum(1 for p in preds if p.get("inspected_schema", False))
+        ast_crash_count = sum(1 for p in preds if p.get("ast_crash", False))
+        inspection_rate = (inspected_count / total_p * 100.0) if total_p else 0.0
+        gate_passed = (inspection_rate >= 80.0) and (ast_crash_count == 0)
+
+        checkpoint_gate = {
+            "checkpoint": args.checkpoint,
+            "total_cases": total_p,
+            "schema_inspection_rate": round(inspection_rate, 2),
+            "schema_inspection_threshold": 80.0,
+            "schema_inspection_passed": inspection_rate >= 80.0,
+            "ast_crash_count": ast_crash_count,
+            "ast_crash_threshold": 0,
+            "ast_crash_passed": ast_crash_count == 0,
+            "gate_verdict": "GO" if gate_passed else "NO-GO",
+            "ready_for_stage_4_rlvr": gate_passed,
+        }
+
+        cases_by_id = {c["id"]: c for c in cases}
+        pairs = [
+            (cases_by_id[p["id"]], p.get("sql") or p.get("query", ""))
+            for p in preds
+            if p["id"] in cases_by_id
+        ]
+        summary = harness.evaluate_batch(pairs)
     else:
         # Default: evaluate golden queries
         title = "Golden Sanity Verification"
@@ -155,14 +231,44 @@ def main() -> int:
 
     print_summary_report(summary, title)
 
+    if checkpoint_gate is not None:
+        print("\n" + "=" * 80)
+        print(" CHECKPOINT SANITY GATE VERDICT (STEP 3 PRE-RLVR GATE)")
+        print("=" * 80)
+        insp_status = "PASS" if checkpoint_gate["schema_inspection_passed"] else "FAIL"
+        ast_status = "PASS" if checkpoint_gate["ast_crash_passed"] else "FAIL"
+        print(
+            f"[{insp_status}] Schema Pre-Inspection Rate : {checkpoint_gate['schema_inspection_rate']:.1f}% "
+            f"(Threshold: >= {checkpoint_gate['schema_inspection_threshold']}%)"
+        )
+        print(
+            f"[{ast_status}] AST / Tool Syntax Crashes   : {checkpoint_gate['ast_crash_count']} "
+            f"(Threshold: == {checkpoint_gate['ast_crash_threshold']})"
+        )
+        print("-" * 80)
+        if checkpoint_gate["ready_for_stage_4_rlvr"]:
+            print(
+                " VERDICT: GO -> Checkpoint satisfies pre-RLVR gate. Proceed to Stage 4 Multi-Turn RLVR."
+            )
+        else:
+            print(
+                " VERDICT: NO-GO -> Checkpoint fails pre-RLVR gate. Review SFT training/distillation."
+            )
+        print("=" * 80)
+
     if args.output_json:
         args.output_json.parent.mkdir(parents=True, exist_ok=True)
+        summary_payload = summary.to_dict()
+        if checkpoint_gate is not None:
+            summary_payload["checkpoint_gate"] = checkpoint_gate
         with open(args.output_json, "w", encoding="utf-8") as f:
-            json.dump(summary.to_dict(), f, indent=2)
+            json.dump(summary_payload, f, indent=2)
         print(f"\nSaved summary to: {args.output_json}")
 
     # Return non-zero if golden evaluation fails or latency exceeds Gate 1 budget
-    if (args.golden or not (args.flawed or args.predictions)) and summary.pass_rate < 1.0:
+    if (
+        args.golden or not (args.flawed or args.predictions or args.checkpoint)
+    ) and summary.pass_rate < 1.0:
         return 1
     if summary.total_latency_ms > 3000.0:
         print(

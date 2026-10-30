@@ -107,13 +107,8 @@ jobs:
           # inference and sandbox database interactions.
           # ----------------------------------------------------------
 
-          mkdir -p src/ask_the_database
-
-          cp ../src/__init__.py \
-              src/__init__.py
-
-          cp -r ../src/ask_the_database/* \
-              src/ask_the_database/
+          mkdir -p src
+          cp -r ../src/ask_the_database src/
 
           # ----------------------------------------------------------
           # Space-specific documentation
@@ -142,7 +137,6 @@ jobs:
           test -f pyproject.toml
           test -f app/app.py
           test -f app/requirements.txt
-          test -f src/__init__.py
           test -f src/ask_the_database/__init__.py
           test -f src/ask_the_database/inference/pipeline.py
 

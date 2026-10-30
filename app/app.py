@@ -51,7 +51,7 @@ def get_pipeline(model_path: str, max_turns: int) -> NL2SQLPipeline:
 def main() -> None:
     """Streamlit application entry point."""
     st.set_page_config(page_title="AskTheDatabase 🤖", layout="wide")
-    st.title("AskTheDatabase: Multi-Turn SQL Exploration Agent")
+    st.title("AskTheDatabase: Multi-Turn SQL Exploration Agent 🤖")
 
     # Sidebar: Database & Model Configuration
     st.sidebar.header("Database Selection")

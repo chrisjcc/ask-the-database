@@ -1,25 +1,43 @@
-output_dir: "models/sft/final"
-dataset_path: null
-val_dataset_path: null
-learning_rate: 2.0e-5
-num_train_epochs: 3
-per_device_train_batch_size: 2
-gradient_accumulation_steps: 8
-warmup_steps: 10
-weight_decay: 0.01
-bf16: false
-logging_steps: 5
-save_strategy: "epoch"
-report_to: "none"
-max_steps: -1
-max_seq_length: 2048
+# -----------------------------------------------------------------------------
+# Supervised Fine-Tuning (SFT) Warmup Configuration (AskTheDatabase)
+# -----------------------------------------------------------------------------
+# Configuration for policy warmup fine-tuning using Hugging Face TRL SFTTrainer
+# supporting both single-turn pairs (Condition 2) and multi-turn trajectories (Condition 4).
 
+# --- Global & Paths ---
+output_dir: "models/sft/final"             # Directory to save fine-tuned policy adapter
+dataset_path: null                         # Primary dataset path (train.jsonl or reviewed_trajectories.jsonl)
+train_data_path: null                      # Dataset path alias for Hydra compatibility
+val_dataset_path: null                     # Optional validation split (e.g. data/processed/val.jsonl)
+
+# --- Batching & Epochs ---
+num_train_epochs: 3                        # Total number of training epochs
+per_device_train_batch_size: 2             # Micro-batch size per GPU
+gradient_accumulation_steps: 8             # Number of steps to accumulate gradients
+max_steps: -1                              # Max training steps (-1 uses num_train_epochs)
+
+# --- Optimization & Loss ---
+learning_rate: 2.0e-5                      # Peak learning rate (AdamW)
+warmup_steps: 10                           # Warmup steps for cosine learning rate schedule
+weight_decay: 0.01                         # Weight decay regularization
+bf16: false                                # Use bfloat16 precision (auto-detected on Ampere+)
+max_seq_length: 2048                       # Maximum token sequence length for ChatML prompts
+
+# --- Logging & Saving ---
+logging_steps: 5                           # How often to log training metrics
+save_strategy: "epoch"                     # How often to save a checkpoint ("epoch", "steps", "no")
+report_to: "wandb"                         # Integration to report metrics to ("wandb", "none")
+wandb:
+  enabled: true                            # Enable Weights & Biases telemetry
+  project: "ask-the-database"              # Target W&B project name
+
+# --- PEFT / LoRA Adapter ---
 lora:
-  r: 16
-  lora_alpha: 32
-  lora_dropout: 0.05
-  bias: "none"
-  target_modules:
+  r: 16                                    # LoRA rank dimension
+  lora_alpha: 32                           # LoRA scaling factor (alpha / r)
+  lora_dropout: 0.05                       # LoRA dropout probability
+  bias: "none"                             # Bias training mode ("none", "all", "lora_only")
+  target_modules:                          # Target projection layers for adapter injection
     - "q_proj"
     - "k_proj"
     - "v_proj"
