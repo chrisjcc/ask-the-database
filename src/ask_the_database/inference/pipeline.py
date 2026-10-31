@@ -225,6 +225,9 @@ class NL2SQLPipeline:
         db_id: str = "default_db",
         max_turns: int | None = None,
         gold_sql: str = "SELECT 1;",
+        do_sample: bool = False,
+        temperature: float = 0.7,
+        top_p: float = 0.95,
     ) -> AgentTrajectory:
         """Execute interactive multi-turn agent rollout against database."""
         effective_max_turns = max_turns or self.max_turns
@@ -254,6 +257,9 @@ class NL2SQLPipeline:
                 env.history,
                 available_tables=available_tables,
                 default_query=mock_default,
+                do_sample=do_sample,
+                temperature=temperature,
+                top_p=top_p,
             )
             obs, step_reward, done, info = env.step(completion)
 
