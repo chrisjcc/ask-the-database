@@ -17,6 +17,10 @@ from ask_the_database.environment.sqlite_env import SQLiteEnvironment
 from ask_the_database.environment.test_suite_evaluator import TestSuiteEvaluator
 from ask_the_database.inference.candidate_sampler import CandidateSampler
 from ask_the_database.inference.pipeline import NL2SQLPipeline
+from ask_the_database.inference.trajectory_verifier import (
+    TrajectoryCandidateSampler,
+    TrajectoryVerifierSelector,
+)
 from ask_the_database.inference.verifier_selector import VerifierSelector
 from ask_the_database.rewards.execution_reward import ExecutionEquivalenceEvaluator
 
@@ -46,6 +50,13 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
         benchmarks = [benchmarks]
 
     use_verifier = bool(evaluation_section.get("use_verifier", False))
+    use_trajectory_verifier = bool(evaluation_section.get("use_trajectory_verifier", False))
+    verification_mode = str(
+        evaluation_section.get(
+            "verification_mode",
+            "trajectory" if use_trajectory_verifier else ("query" if use_verifier else "none"),
+        )
+    ).lower()
     num_candidates = int(evaluation_section.get("num_candidates", 5))
     temperature = float(evaluation_section.get("temperature", 0.7))
 
@@ -64,7 +75,24 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
         )
 
     verifier_selector: VerifierSelector | None = None
-    if use_verifier:
+    trajectory_selector: TrajectoryVerifierSelector | None = None
+
+    if verification_mode == "trajectory":
+        logger.info(
+            "Initializing TrajectoryVerifierSelector (Best-of-%d, T=%.2f, Max Turns=%d) for model: %s",
+            num_candidates,
+            temperature,
+            max_turns,
+            model_path,
+        )
+        traj_sampler = TrajectoryCandidateSampler(
+            pipeline=pipeline,
+            num_candidates=num_candidates,
+            temperature=temperature,
+            max_turns=max_turns,
+        )
+        trajectory_selector = TrajectoryVerifierSelector(sampler=traj_sampler)
+    elif verification_mode == "query" or use_verifier:
         logger.info(
             "Initializing VerifierSelector (Best-of-%d, T=%.2f) for model: %s",
             num_candidates,
@@ -131,7 +159,24 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
             db_id = s.get("db_id", "default_db")
             gold_sql = s.get("gold_sql", "SELECT 1;")
 
-            if verifier_selector is not None:
+            if trajectory_selector is not None:
+                traj_outcome = trajectory_selector.run_pipeline(
+                    question=question,
+                    db_path=db_path,
+                    db_id=db_id,
+                    num_candidates=num_candidates,
+                    temperature=temperature,
+                    gold_sql=gold_sql,
+                )
+                final_sql = traj_outcome.selected_query
+                exec_env = SQLiteEnvironment(db_path)
+                final_exec_res = (
+                    traj_outcome.selected_trajectory.final_execution_result
+                    or exec_env.execute(final_sql)
+                )
+                final_success = final_exec_res.success
+                had_recovery = traj_outcome.selected_trajectory.had_error_recovery
+            elif verifier_selector is not None:
                 schema_ddl = SQLiteEnvironment(db_path).get_schema_summary()
                 outcome = verifier_selector.run_pipeline(
                     question=question,

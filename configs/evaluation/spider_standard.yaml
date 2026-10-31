@@ -10,6 +10,10 @@ metrics:
   - ex
   - va
   - mrr
+# Verification settings:
+# verification_mode options: "none", "query" (single-turn SQL ranker), "trajectory" (multi-turn trajectory verifier)
+verification_mode: "none"
 use_verifier: false
+use_trajectory_verifier: false
 num_candidates: 5
 temperature: 0.7

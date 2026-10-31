@@ -10,6 +10,14 @@ from ask_the_database.inference.pipeline import (
     AgentTrajectory,
     NL2SQLPipeline,
 )
+from ask_the_database.inference.trajectory_verifier import (
+    TrajectoryCandidate,
+    TrajectoryCandidateSampler,
+    TrajectoryScore,
+    TrajectorySelectionOutcome,
+    TrajectoryVerifier,
+    TrajectoryVerifierSelector,
+)
 from ask_the_database.inference.verifier_selector import (
     MajorityVoteOutcome,
     VerifierSelectionOutcome,
@@ -23,6 +31,12 @@ __all__ = [
     "CandidateSampler",
     "MajorityVoteOutcome",
     "NL2SQLPipeline",
+    "TrajectoryCandidate",
+    "TrajectoryCandidateSampler",
+    "TrajectoryScore",
+    "TrajectorySelectionOutcome",
+    "TrajectoryVerifier",
+    "TrajectoryVerifierSelector",
     "VerifierSelectionOutcome",
     "VerifierSelector",
     "clean_candidate_sql",
