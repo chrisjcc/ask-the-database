@@ -78,7 +78,7 @@ Natural language-to-SQL (Text-to-SQL) semantic parsing serves as the foundationa
 However, aligning neural language models for autonomous relational execution in realistic, zero-knowledge environments exposes three fundamental, interlocking research challenges:
 \begin{enumerate}[leftmargin=*,itemsep=1pt,topsep=2pt]
     \item \textbf{Exploration Collapse in Multi-Turn RLVR}: Single-turn models frequently hallucinate column names, infer invalid foreign keys, or generate unindexed Cartesian cross-joins. When training multi-turn agents from conventional SFT baselines using Group Relative Policy Optimization (GRPO)~\citep{shao2024deepseekmath}, ungrounded rollouts fail simultaneously on complex unseen schemas. This collapses intra-group reward variance ($\operatorname{std}(R) \to 0$), driving advantage estimates to zero ($A_i \to 0$) and causing the policy gradient to vanish, trapping the policy in an extended exploration plateau.
-    \item \textbf{The Candidate Pool Bottleneck in Test-Time Verification}: In production deployments, ground-truth SQL ($\text{gold\_sql}$) is unavailable. While test-time tournament verification (e.g., Best-of-$G$ selection via LLM-as-a-Verifier) can arbitrate between competing queries, a verifier acts purely as an evaluation filter. If an ungrounded generator policy samples candidates that all hallucinate non-existent columns, the verifier cannot synthesize correct queries from an empty candidate pool ($\text{Pass@}G \to 0$).
+    \item \textbf{The Candidate Pool Bottleneck in Test-Time Verification}: In production deployments, ground-truth SQL ($\text{gold\_sql}$) is unavailable. While test-time tournament verification (e.g., Best-of-$G$ selection via LLM-as-a-Verifier) can arbitrate between competing queries, a verifier acts purely as an evaluation filter. This motivates a central research question: \emph{does test-time verification compensate for an ungrounded generator policy, or does verification compound value exclusively when paired with a procedurally grounded generator policy?} If an ungrounded generator policy samples candidates that all hallucinate non-existent columns, the verifier cannot synthesize correct queries from an empty candidate pool ($\text{Pass@}G \to 0$).
     \item \textbf{The Evaluation Latency Bottleneck}: Full cross-domain benchmark evaluation (e.g., 1,034 queries on Spider Dev) requires $180$--$350$ seconds of cluster GPU compute over disk-bound SQLite files, preventing instant developer feedback during interactive policy alignment and automated regression testing.
 \end{enumerate}
 
@@ -231,7 +231,9 @@ To select the optimal candidate from $N$ samples without incurring quadratic $\m
 \end{itemize}
 
 \subsection{The Compound Architecture: Grounded Generators + Verifiers}
-A verifier is fundamentally a \textbf{re-ranker and selector}; it cannot synthesize missing SQL syntax or recover missing columns if they are absent from all candidate rollouts.
+A central research question guiding our architectural design is: \emph{Does test-time verification compensate for an ungrounded generator policy, or does verification compound value exclusively when paired with a procedurally grounded generator policy?}
+
+Fundamentally, a verifier is a \textbf{re-ranker and selector}; it cannot synthesize missing SQL syntax or recover missing columns if they are absent from all candidate rollouts.
 
 \begin{theorem}[Candidate Pool Quality Bottleneck]
 Let a generator policy $\pi$ generate a pool of $G$ independent candidate queries with per-sample correct execution probability $p = P(Q_{\text{gen}} \equiv Q_{\text{gold}})$. The probability that the candidate pool contains at least one correct query is bounded by:
