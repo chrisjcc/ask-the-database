@@ -214,23 +214,42 @@ When positioning AskTheDatabase alongside HarnessSQL in Section 6 (Related Work)
 
 ### Overall Verdict: **SELECTIVELY INCORPORATE & CROSS-BENCHMARK**
 
-We recommend a four-phase integration roadmap:
+We recommend a four-phase integration roadmap coordinated under **[GitHub Epic #85](https://github.com/chrisjcc/ask-the-database/issues/85)** and anchored by **[Epic PR #84](https://github.com/chrisjcc/ask-the-database/pull/84)**:
 
-### Phase 1: Asset Adoption (Immediate / High Impact)
-* **Action**: Integrate the DuckDB-to-SQLite export pipeline from `data_generation/dbt_sqlite/` into AskTheDatabase.
-* **Outcome**: Extends our database catalog to include all 79 Spider 2.0-DBT enterprise SQLite databases.
+```mermaid
+flowchart TD
+    PR84["Epic PR #84<br/>Feasibility Study & Strategic Blueprint"] --> EPIC["Epic #85: HarnessSQL Roadmap"]
+    EPIC --> P1["Phase 1 (Issue #86): Asset Adoption<br/>PR: feat/spider2-dbt-sqlite-pipeline"]
+    EPIC --> P2["Phase 2 (Issue #87): DAPO Dynamic Sampling<br/>PR: feat/grpo-dapo-dynamic-sampling"]
+    P1 --> P3["Phase 3 (Issue #88): Spider 2.0-SQLite Cross-Benchmark<br/>PR: feat/eval-spider2-trajectory-verifier"]
+    P2 --> P3
+    P3 --> P4["Phase 4 (Issue #89): White Paper Positioning<br/>PR: feat/white-paper-harness-sql-positioning"]
+```
 
-### Phase 2: Algorithmic Refinement (Short-Term / High Value)
+| Phase | Sub-Issue | Title | Scope & Target Deliverable | Target PR Branch | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Phase 1** | [#86](https://github.com/chrisjcc/ask-the-database/issues/86) | `feat(data): Spider 2.0-DBT DuckDB-to-SQLite Asset Extraction Pipeline` | Port & validate DuckDB-to-SQLite converter for 49 enterprise schemas | `feat/spider2-dbt-sqlite-pipeline` | Planned |
+| **Phase 2** | [#87](https://github.com/chrisjcc/ask-the-database/issues/87) | `feat(training): DAPO Dynamic Sampling Filtering in TRL GRPO Adapter` | Implement dynamic group filtering in `TRLGRPOAdapter` to eliminate zero-advantage gradient stall | `feat/grpo-dapo-dynamic-sampling` | Planned |
+| **Phase 3** | [#88](https://github.com/chrisjcc/ask-the-database/issues/88) | `feat(evaluation): Spider 2.0-SQLite Cross-Benchmark for Harness-Zero & Trajectory Verifier` | Evaluate Harness-Zero + Best-of-5 Trajectory Verifier against HarnessSQL baselines | `feat/eval-spider2-trajectory-verifier` | Planned |
+| **Phase 4** | [#89](https://github.com/chrisjcc/ask-the-database/issues/89) | `docs(paper): Integrate HarnessSQL Comparative Positioning into White Paper Draft` | Position HarnessSQL in `papers/draft/main.tex` Section 6 and recompile PDF | `feat/white-paper-harness-sql-positioning` | Planned |
+
+---
+
+### Phase 1: Asset Adoption (Sub-Issue [#86](https://github.com/chrisjcc/ask-the-database/issues/86) / PR `feat/spider2-dbt-sqlite-pipeline`)
+* **Action**: Integrate the DuckDB-to-SQLite export pipeline from `data_generation/dbt_sqlite/` into AskTheDatabase under `src/ask_the_database/data/dbt_sqlite/`.
+* **Outcome**: Extends our database catalog to include all 49 Spider 2.0-DBT enterprise SQLite databases with full schema and row count validation.
+
+### Phase 2: Algorithmic Refinement (Sub-Issue [#87](https://github.com/chrisjcc/ask-the-database/issues/87) / PR `feat/grpo-dapo-dynamic-sampling`)
 * **Action**: Add DAPO-style **Dynamic Sampling** to `src/ask_the_database/training/adapters/trl_grpo.py`:
   * Before computing policy loss on a rollout group, check if $\operatorname{std}(R) == 0$.
   * If variance is zero, skip gradient calculation for that group to prevent zero-advantage gradient dilution.
-* **Outcome**: Directly reinforces our theoretical findings in Section 5.3 regarding exploration collapse in GRPO.
+* **Outcome**: Directly reinforces our theoretical findings in Section 5.3 regarding exploration collapse in GRPO and accelerates policy convergence.
 
-### Phase 3: Cross-Benchmark Experimentation (Medium-Term / High Scientific Prestige)
+### Phase 3: Cross-Benchmark Experimentation (Sub-Issue [#88](https://github.com/chrisjcc/ask-the-database/issues/88) / PR `feat/eval-spider2-trajectory-verifier`)
 * **Action**: Run an empirical evaluation of `harness_zero_grpo` and our newly implemented `TrajectoryVerifierSelector` (from Issue #82 / PR #83) on the official 135 tasks of Spider 2.0-SQLite.
 * **Target Hypothesis**: Demonstrate that **Harness-Zero GRPO + Trajectory Verification** achieves $\ge 48\%$ on Spider 2.0-SQLite at the 7B parameter scale, outperforming HarnessSQL's Qwen3-8B baseline (45.2%) with higher sample efficiency and lower compute requirements.
 
-### Phase 4: White Paper Positioning (Immediate)
+### Phase 4: White Paper Positioning (Sub-Issue [#89](https://github.com/chrisjcc/ask-the-database/issues/89) / PR `feat/white-paper-harness-sql-positioning`)
 * **Action**: Update Section 6 (*Related Work*) in `papers/draft/main.tex` to cite and discuss HarnessSQL:
   * Frame HarnessSQL as contemporary evidence demonstrating that harness-native training resolves the train–deploy mismatch.
   * Contrast HarnessSQL's teacher rejection sampling against Harness-Zero's in-flight non-leaking procedural distillation.
