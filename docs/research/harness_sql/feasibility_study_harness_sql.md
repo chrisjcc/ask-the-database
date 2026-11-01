@@ -163,11 +163,30 @@ Incorporating selected concepts and assets from HarnessSQL unlocks three major c
 * **Added Value**: Utilizing HarnessSQL's `dbt_sqlite` pipeline gives us 135 complex enterprise tasks on Spider 2.0-SQLite.
 * **Research Opportunity**: We can evaluate **Harness-Zero GRPO** and our **Trajectory Verifier** on Spider 2.0-SQLite. If our 7B model matches or outperforms HarnessSQL's Qwen3-8B (45.2%), it will provide undeniable evidence that **in-flight procedural distillation and test-time verification outperform brute-force teacher rejection sampling**.
 
-### 4.2 Value Add 2: Mitigating Exploration Collapse via DAPO Dynamic Sampling
-* **The Insight from HarnessSQL**: Appendix C.2 explains that DAPO defines an effective prompt set:
-  $$\mathcal{Q}_{\text{eff}} = \left\{ q \in \mathcal{Q} \mid \exists i, j \text{ s.t. } R(\tau_i; x) \ne R(\tau_j; x) \right\}$$
-  Prompt groups outside this set have zero advantage variance ($A_i = 0$) and are dynamically pruned from the gradient update.
-* **Synergy with AskTheDatabase**: In Section 5.3 of our white paper, we identified that Cold-Start GRPO stalls for 27 steps precisely because $\operatorname{std}(R) \to 0$. Implementing DAPO's dynamic sampling filter in our `TRLGRPOAdapter` will mathematically guarantee that zero-variance batches never dilute optimizer gradients, accelerating RLVR training efficiency.
+### 4.2 Value Add 2: Mitigating Exploration Collapse & Trajectory Noise via DAPO and GSPO Policy Optimization
+
+In Section 5.3 and Table 4 of HarnessSQL, the authors evaluate three distinct policy optimization algorithms under identical budgets, starting from the same Qwen3-8B 32K SFT checkpoint:
+* **GRPO** (Group Relative Policy Optimization): 40.7% on S2-SQLite, 8.7% on BI-mini, 23.3% on LSB-SQLite.
+* **GSPO** (Group Sequence Policy Optimization): 43.7% on S2-SQLite, 9.0% on BI-mini, **25.2%** on LSB-SQLite (**highest OOD score**).
+* **DAPO** (Decoupled Clip & Dynamic Sampling Policy Optimization): **45.2%** on S2-SQLite (**highest in-domain score**), 9.0% on BI-mini, 24.8% on LSB-SQLite.
+
+#### 1. DAPO (Decoupled Clip & Dynamic Sampling)
+DAPO retains token-level policy gradients but introduces three refinements (Appendix C.2):
+1. **Dynamic Sampling ($\mathcal{Q}_{\text{eff}}$)**: Filters out prompt groups where intra-group reward variance is zero ($\operatorname{std}(R) = 0$):
+   $$\mathcal{Q}_{\text{eff}} = \left\{ q \in \mathcal{B} \mid \exists i, j \text{ s.t. } R_i \ne R_j \right\}$$
+   This directly eliminates the zero-advantage gradient stall we identified in Section 5.3 of our white paper.
+2. **Decoupled Asymmetric Clipping**: Allows larger policy probability increases for positively advantaged exploratory tokens by setting $\epsilon_{\text{high}} = 0.28 > \epsilon_{\text{low}} = 0.20$.
+3. **Batch-Wide Token Normalization**: Normalizes loss across all loss-bearing tokens in active groups rather than averaging per trajectory first.
+
+#### 2. GSPO (Group Sequence Policy Optimization)
+GSPO (Zheng et al., 2025) addresses the fundamental mismatch between token-level clipping and trajectory-level rewards. In multi-turn agents (1,000–4,000 tokens), token-level importance ratios $\rho_{i,t}$ exhibit high variance. GSPO constructs a single length-normalized sequence ratio:
+$$s_i(\theta) = \exp \left( \frac{1}{|\mathcal{T}_i|} \sum_{t \in \mathcal{T}_i} \log \frac{\pi_\theta(a_{i,t} \mid s_{i,t})}{\pi_{\text{old}}(a_{i,t} \mid s_{i,t})} \right)$$
+and clips the entire trajectory uniformly:
+$$\mathcal{L}_{\text{GSPO}}(\theta) = -\frac{1}{G} \sum_{i=1}^G \min \left( s_i(\theta) \hat{A}_i, \, \operatorname{clip}(s_i(\theta), 1 - \epsilon_s, 1 + \epsilon_s) \hat{A}_i \right)$$
+where $\epsilon_s \approx 3 \times 10^{-4}$. This sequence-level alignment explains why GSPO achieved the highest out-of-distribution transfer on LiveSQLBench.
+
+#### 3. Relevance to AskTheDatabase
+Rather than choosing between them a priori, we can integrate both approaches into `TRLGRPOAdapter`. Dynamic Sampling accelerates convergence across both objectives, while benchmarking DAPO (fine-grained token precision on SQL grammar) against GSPO (holistic trajectory stability across multi-turn tool loops) under our 4-tier mutation-verified reward rubric represents a valuable empirical contribution.
 
 ### 4.3 Value Add 3: Structural Complexity Curriculum ($D_{\text{str}}$)
 * **Added Value**: Adopting HarnessSQL's $D_{\text{str}}$ formulation allows us to replace heuristic query categorization (Easy/Medium/Hard) with a continuous, reproducible AST complexity score. We can stratify our Zero-Budget Evaluation Micro-Harness and benchmark scorecards by $D_{\text{str}}$ bands (`foundation`, `core`, `growth`, `stretch`).
@@ -220,7 +239,7 @@ We recommend a four-phase integration roadmap coordinated under **[GitHub Epic #
 flowchart TD
     PR84["Epic PR #84<br/>Feasibility Study & Strategic Blueprint"] --> EPIC["Epic #85: HarnessSQL Roadmap"]
     EPIC --> P1["Phase 1 (Issue #86): Asset Adoption<br/>PR: feat/spider2-dbt-sqlite-pipeline"]
-    EPIC --> P2["Phase 2 (Issue #87): DAPO Dynamic Sampling<br/>PR: feat/grpo-dapo-dynamic-sampling"]
+    EPIC --> P2["Phase 2 (Issue #87): DAPO & GSPO Policy Optimization<br/>PR: feat/grpo-dapo-gspo-adapter"]
     P1 --> P3["Phase 3 (Issue #88): Spider 2.0-SQLite Cross-Benchmark<br/>PR: feat/eval-spider2-trajectory-verifier"]
     P2 --> P3
     P3 --> P4["Phase 4 (Issue #89): White Paper Positioning<br/>PR: feat/white-paper-harness-sql-positioning"]
@@ -229,7 +248,7 @@ flowchart TD
 | Phase | Sub-Issue | Title | Scope & Target Deliverable | Target PR Branch | Status |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Phase 1** | [#86](https://github.com/chrisjcc/ask-the-database/issues/86) | `feat(data): Spider 2.0-DBT DuckDB-to-SQLite Asset Extraction Pipeline` | Port & validate DuckDB-to-SQLite converter for 49 enterprise schemas | `feat/spider2-dbt-sqlite-pipeline` | Planned |
-| **Phase 2** | [#87](https://github.com/chrisjcc/ask-the-database/issues/87) | `feat(training): DAPO Dynamic Sampling Filtering in TRL GRPO Adapter` | Implement dynamic group filtering in `TRLGRPOAdapter` to eliminate zero-advantage gradient stall | `feat/grpo-dapo-dynamic-sampling` | Planned |
+| **Phase 2** | [#87](https://github.com/chrisjcc/ask-the-database/issues/87) | `feat(training): DAPO & GSPO Policy Optimization in TRL RLVR Adapter` | Implement DAPO (asymmetric clip + dynamic sampling) and GSPO (sequence-level ratio) in `TRLGRPOAdapter` | `feat/grpo-dapo-gspo-adapter` | Planned |
 | **Phase 3** | [#88](https://github.com/chrisjcc/ask-the-database/issues/88) | `feat(evaluation): Spider 2.0-SQLite Cross-Benchmark for Harness-Zero & Trajectory Verifier` | Evaluate Harness-Zero + Best-of-5 Trajectory Verifier against HarnessSQL baselines | `feat/eval-spider2-trajectory-verifier` | Planned |
 | **Phase 4** | [#89](https://github.com/chrisjcc/ask-the-database/issues/89) | `docs(paper): Integrate HarnessSQL Comparative Positioning into White Paper Draft` | Position HarnessSQL in `papers/draft/main.tex` Section 6 and recompile PDF | `feat/white-paper-harness-sql-positioning` | Planned |
 
@@ -239,14 +258,15 @@ flowchart TD
 * **Action**: Integrate the DuckDB-to-SQLite export pipeline from `data_generation/dbt_sqlite/` into AskTheDatabase under `src/ask_the_database/data/dbt_sqlite/`.
 * **Outcome**: Extends our database catalog to include all 49 Spider 2.0-DBT enterprise SQLite databases with full schema and row count validation.
 
-### Phase 2: Algorithmic Refinement (Sub-Issue [#87](https://github.com/chrisjcc/ask-the-database/issues/87) / PR `feat/grpo-dapo-dynamic-sampling`)
-* **Action**: Add DAPO-style **Dynamic Sampling** to `src/ask_the_database/training/adapters/trl_grpo.py`:
-  * Before computing policy loss on a rollout group, check if $\operatorname{std}(R) == 0$.
-  * If variance is zero, skip gradient calculation for that group to prevent zero-advantage gradient dilution.
-* **Outcome**: Directly reinforces our theoretical findings in Section 5.3 regarding exploration collapse in GRPO and accelerates policy convergence.
+### Phase 2: Algorithmic Refinement (Sub-Issue [#87](https://github.com/chrisjcc/ask-the-database/issues/87) / PR `feat/grpo-dapo-gspo-adapter`)
+* **Action**: Implement both **DAPO** and **GSPO** policy optimization objectives in `src/ask_the_database/training/adapters/trl_grpo.py`:
+  * **Dynamic Sampling**: Prune rollout groups with zero intra-group reward variance ($\operatorname{std}(R) = 0$) to eliminate zero-advantage gradient stall.
+  * **DAPO Asymmetric Clipping**: Implement decoupled clipping radii ($\epsilon_{\text{low}}=0.20, \epsilon_{\text{high}}=0.28$) with batch token count loss normalization.
+  * **GSPO Sequence Ratio**: Implement length-normalized trajectory importance weighting $s_i(\theta) = \exp(\frac{1}{N_i} \sum \log \rho_{i,t})$ with sequence-level clipping ($\epsilon_s = 3 \times 10^{-4}$).
+* **Outcome**: Directly reinforces our theoretical findings in Section 5.3 regarding exploration collapse in GRPO, provides structural stability across multi-turn trajectories, and establishes a principled comparison under our 4-tier mutation-verified reward rubric.
 
 ### Phase 3: Cross-Benchmark Experimentation (Sub-Issue [#88](https://github.com/chrisjcc/ask-the-database/issues/88) / PR `feat/eval-spider2-trajectory-verifier`)
-* **Action**: Run an empirical evaluation of `harness_zero_grpo` and our newly implemented `TrajectoryVerifierSelector` (from Issue #82 / PR #83) on the official 135 tasks of Spider 2.0-SQLite.
+* **Action**: Run an empirical evaluation of `harness_zero_grpo` (under GRPO, DAPO, and GSPO) and our newly implemented `TrajectoryVerifierSelector` (from Issue #82 / PR #83) on the official 135 tasks of Spider 2.0-SQLite.
 * **Target Hypothesis**: Demonstrate that **Harness-Zero GRPO + Trajectory Verification** achieves $\ge 48\%$ on Spider 2.0-SQLite at the 7B parameter scale, outperforming HarnessSQL's Qwen3-8B baseline (45.2%) with higher sample efficiency and lower compute requirements.
 
 ### Phase 4: White Paper Positioning (Sub-Issue [#89](https://github.com/chrisjcc/ask-the-database/issues/89) / PR `feat/white-paper-harness-sql-positioning`)
@@ -257,7 +277,7 @@ flowchart TD
 
 ---
 
-## Appendix: Bibliographic Reference for White Paper
+## Appendix: Bibliographic References for White Paper
 
 ```bibtex
 @article{yang2026harnesssql,
@@ -265,5 +285,19 @@ flowchart TD
   author={Yang, Haolin and Zhang, Jipeng and Qian, Zhiqiang and Xie, Jian and Gong, Shuaishuai and Guo, Yike and Han, Sirui},
   journal={arXiv preprint arXiv:2610.12274},
   year={2026}
+}
+
+@article{zheng2025group,
+  title={Group sequence policy optimization},
+  author={Zheng, Chujie and Liu, Shixuan and Li, Minpeng and Chen, Xingyu and Yu, Bowen and Gao, Chang and Dang, Kai and Liu, Yuanwei and Men, Rui and Yang, An and Zhou, Jingren and Lin, Junyang},
+  journal={arXiv preprint arXiv:2507.18071},
+  year={2025}
+}
+
+@article{yu2025dapo,
+  title={DAPO: an open-source LLM reinforcement learning system at scale},
+  author={Yu, Qiying and Zhang, Zheng and Zhu, Renjie and Yuan, Yuxuan and Zuo, Xueru and Yue, Yang and others},
+  journal={Advances in Neural Information Processing Systems},
+  year={2025}
 }
 ```
