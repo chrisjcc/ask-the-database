@@ -32,7 +32,7 @@ DATASET_REPO ?= chrisjcc/ask-the-database
         train-sft train-filtered train-harness-zero train-grpo \
         sweep \
         smoke-eval evaluate-zero-budget-mve evaluate evaluate-mve compare-rlvr evaluate-verifier-mve \
-        generate-hf-cards publish-hf-cards publish-hf-model publish-hf-release \
+        generate-hf-cards publish-hf-cards publish-hf-model publish-hf-dataset publish-hf-release \
         run-app docker-build docker-run
 
 # ------------------------------------------------------------
@@ -255,6 +255,24 @@ publish-hf-model:
 		$(if $(WEIGHTS_DIR),--weights-dir $(WEIGHTS_DIR),) $(ARGS)
 	@echo "=========================================================="
 	@echo "✅ Model publication to Hugging Face complete."
+	@echo "=========================================================="
+
+publish-hf-dataset:
+	@echo "=========================================================="
+	@echo "🚀 Deploying dataset card and files to Hugging Face Dataset Hub"
+	@echo "➔ Dataset: https://huggingface.co/datasets/$(DATASET_REPO)"
+	@echo "=========================================================="
+	@test -n "$$HF_TOKEN" || ( \
+		echo "ERROR: HF_TOKEN environment variable is not set."; \
+		echo "Export HF_TOKEN=<your-token> or add it to .env"; \
+		exit 1; \
+	)
+	$(PYTHON) scripts/release_to_hf.py --publish-cards \
+		--model-repo $(MODEL_REPO) \
+		--dataset-repo $(DATASET_REPO) \
+		$(if $(DATASET_DIR),--dataset-dir $(DATASET_DIR),) $(ARGS)
+	@echo "=========================================================="
+	@echo "✅ Dataset publication to Hugging Face complete."
 	@echo "=========================================================="
 
 publish-hf-release:

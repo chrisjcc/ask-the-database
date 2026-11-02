@@ -56,8 +56,8 @@ DEFAULT_REGISTRY_NAME = "Model"
 DEFAULT_REGISTRY_COLLECTION = "AskTheDatabase-Models"
 DEFAULT_REGISTRY_ALIAS = "production"
 DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
-DEFAULT_MODEL_REPO = "chrisjcc/ask-the-database-coder-7b"
-DEFAULT_DATASET_REPO = "chrisjcc/ask-the-database-trajectories"
+DEFAULT_MODEL_REPO = "chrisjcc/ask-the-database"
+DEFAULT_DATASET_REPO = "chrisjcc/ask-the-database"
 PROMOTION_FILE = "model_promotion.json"
 
 
