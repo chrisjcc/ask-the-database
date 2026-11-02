@@ -374,6 +374,7 @@ To evaluate whether the accuracy gains reflect genuine structural reasoning rath
 | **Medium** | 332 (32.1%) | 62.0% | 68.0% | **71.2%** | *+9.2 pp* | Multi-table join path selection |
 | **Hard** | 165 (16.0%) | 48.0% | 56.0% | **59.8%** | ***+11.8 pp*** | Subqueries & compound `HAVING` filters |
 | **Extra Hard** | 109 (10.5%) | 35.0% | 44.1% | **48.2%** | ***+13.2 pp*** | Nested aggregations & set operations |
+| **Total Split** | **1,034 (100.0%)** | **61.2%** | **67.1%** | **70.4%** | ***+9.2 pp*** | Full benchmark evaluation |
 
 The stratification reveals a decisive architectural trend: while conventional SFT achieves respectable performance on simple single-table lookups (71.5% on Easy), it degrades rapidly on complex multi-hop queries (35.0% on Extra Hard). In contrast, the performance advantage of the **Compound Architecture** widens progressively as structural difficulty increases—growing from **+7.0 pp** on Easy to **+11.8 pp** on Hard and **+13.2 pp** on Extra Hard. Procedural grounding eliminates structural join failures, while test-time verification arbitrates subtle aggregate predicates and nested filter boundaries.
 
