@@ -93,6 +93,28 @@ def test_deployment_artifacts_exist() -> None:
 
     hf_deploy_wf = Path(".github/workflows/deploy-hf-demo.yml")
     assert hf_deploy_wf.exists()
+    hf_wf_content = hf_deploy_wf.read_text(encoding="utf-8")
+    assert "Validate Hugging Face credentials" in hf_wf_content
+    assert "HF_TOKEN" in hf_wf_content
 
     docker_wf = Path(".github/workflows/docker-publish.yml")
     assert docker_wf.exists()
+
+
+def test_pipeline_model_loading_status() -> None:
+    """Verify is_model_loaded reflects weights loading and handles missing checkpoints."""
+    # Offline dummy path
+    p_offline = NL2SQLPipeline(model_path="nonexistent/local/path", max_turns=3)
+    assert not p_offline.is_model_loaded
+
+    # Dummy remote hub path (should fail gracefully and record load_error)
+    p_remote = NL2SQLPipeline(model_path="dummy-org/nonexistent-model-repo", max_turns=3)
+    assert not p_remote.is_model_loaded
+    assert p_remote.load_error is not None
+
+    # Fallback heuristic generation remains functional
+    step_output = p_remote.generate_step(
+        messages=[{"role": "user", "content": "list singers"}],
+        available_tables=["singer"],
+    )
+    assert "inspect_schema" in step_output or "SELECT" in step_output

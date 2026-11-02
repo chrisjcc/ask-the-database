@@ -483,6 +483,46 @@ def run_deployment_pipeline(cfg: Any) -> None:
             repo_type="model",
         )
 
+    # 4. Optional: Upload model weights / checkpoint directory
+    weights_dir = getattr(cfg, "weights_dir", None)
+    if weights_dir:
+        w_path = Path(weights_dir)
+        if w_path.is_dir():
+            logger.info(
+                "Uploading model weights from '%s' to Hugging Face model repo: %s",
+                w_path,
+                model_repo,
+            )
+            api.upload_folder(
+                folder_path=str(w_path),
+                repo_id=model_repo,
+                repo_type="model",
+                ignore_patterns=["*.log", "*.tmp", "__pycache__", ".git*"],
+            )
+            logger.info("Model weights upload to %s completed.", model_repo)
+        else:
+            logger.warning("Specified weights directory '%s' does not exist.", weights_dir)
+
+    # 5. Optional: Upload dataset directory
+    dataset_dir = getattr(cfg, "dataset_dir", None)
+    if dataset_dir:
+        d_path = Path(dataset_dir)
+        if d_path.is_dir():
+            logger.info(
+                "Uploading dataset files from '%s' to Hugging Face dataset repo: %s",
+                d_path,
+                dataset_repo,
+            )
+            api.upload_folder(
+                folder_path=str(d_path),
+                repo_id=dataset_repo,
+                repo_type="dataset",
+                ignore_patterns=["*.tmp", "__pycache__", ".git*"],
+            )
+            logger.info("Dataset files upload to %s completed.", dataset_repo)
+        else:
+            logger.warning("Specified dataset directory '%s' does not exist.", dataset_dir)
+
     logger.info("Hugging Face Hub publication completed successfully.")
 
 
@@ -550,11 +590,23 @@ def main() -> None:
         help="Path to evaluation summary JSON file (default: results/evaluation_summary.json).",
     )
     parser.add_argument(
+        "--weights-dir",
+        type=str,
+        default=None,
+        help="Optional local path to model weights/adapter directory to upload to the model repository.",
+    )
+    parser.add_argument(
+        "--dataset-dir",
+        type=str,
+        default=None,
+        help="Optional local path to processed dataset directory (e.g. data/processed) to upload.",
+    )
+    parser.add_argument(
         "--publish-cards",
         "--deploy",
         action="store_true",
         dest="deploy",
-        help="Deploy/publish generated README cards to Hugging Face Hub (requires HF_TOKEN).",
+        help="Deploy/publish generated README cards and artifacts to Hugging Face Hub (requires HF_TOKEN).",
     )
 
     args = parser.parse_args()
