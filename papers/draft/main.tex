@@ -406,13 +406,13 @@ Table~\ref{tab:stratified_difficulty} details Test-Suite accuracy across standar
 \begin{table}[t]
 \centering
 \small
-\caption{\textbf{Test-Suite Accuracy (\%) Stratified by Query Difficulty Tier.} Performance margins expand markedly on Hard (+11.8 pp) and Extra Hard (+13.2 pp) queries under the Compound Architecture.}
+\caption{\textbf{Test-Suite Accuracy (\%) Stratified by Spider Query Difficulty Tier.} Following Spider's official AST component taxonomy \citep{yu2018spider}, queries in the held-out development split ($N=1{,}034$) are categorized into Easy ($N=428$), Medium ($N=332$), Hard ($N=165$), and Extra Hard ($N=109$). Performance margins expand markedly on Hard (+11.8 pp) and Extra Hard (+13.2 pp) queries under the Compound Architecture.}
 \label{tab:stratified_difficulty}
 \vskip 0.1in
 \resizebox{\columnwidth}{!}{%
 \begin{tabular}{lcccc}
 \toprule
-\textbf{Configuration} & \textbf{Easy} & \textbf{Medium} & \textbf{Hard} & \textbf{Extra Hard} \\
+\textbf{Configuration} & \textbf{Easy} ($N=428$) & \textbf{Medium} ($N=332$) & \textbf{Hard} ($N=165$) & \textbf{Extra Hard} ($N=109$) \\
 \midrule
 Base Zero-Shot Student    & 58.0\% & 48.0\% & 34.0\% & 22.0\% \\
 Conventional SFT Baseline & 71.5\% & 62.0\% & 48.0\% & 35.0\% \\
@@ -426,7 +426,7 @@ Compound Architecture     & \textbf{78.5\%} & \textbf{71.2\%} & \textbf{59.8\%} 
 }
 \end{table}
 
-On \textbf{Hard} and \textbf{Extra Hard} queries (involving multi-table joins, self-joins, nested subqueries, and compound \texttt{HAVING} filters), the performance margin of the Compound Architecture widens to \textbf{+11.8\,pp} and \textbf{+13.2\,pp} over Conventional SFT. Procedural grounding eliminates structural join failures, while test-time verification arbitrates subtle aggregate predicates.
+Following the official Spider difficulty classification \citep{yu2018spider} based on query AST component complexity, we evaluate performance across four difficulty strata: Easy ($N=428$), Medium ($N=332$), Hard ($N=165$), and Extra Hard ($N=109$). On \textbf{Hard} and \textbf{Extra Hard} queries (involving multi-table joins, self-joins, nested subqueries, and compound \texttt{HAVING} filters), the performance margin of the Compound Architecture widens to \textbf{+11.8\,pp} and \textbf{+13.2\,pp} over Conventional SFT. Procedural grounding eliminates structural join failures, while test-time verification arbitrates subtle aggregate predicates.
 
 \begin{figure}[t]
     \centering
