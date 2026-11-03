@@ -42,10 +42,14 @@ def test_init_demo_db(tmp_path: Path) -> None:
     sm = SchemaManager(str(db_path))
     tables = sm.get_tables()
     assert "singer" in tables
+    assert "stadium" in tables
+    assert "concert" in tables
+    assert "singer_in_concert" in tables
 
     ddl = sm.get_all_tables_ddl()
     assert "CREATE TABLE" in ddl
     assert "singer" in ddl
+    assert "stadium" in ddl
 
 
 def test_get_pipeline_caching() -> None:
@@ -74,7 +78,7 @@ def test_demo_tunnel_slurm_script() -> None:
 
 
 def test_deployment_artifacts_exist() -> None:
-    """Verify Dockerfile, HF Space readme, and workflow configuration files."""
+    """Verify Dockerfile, HF Space readme, demo databases, and workflow configuration files."""
     dockerfile = Path("Dockerfile")
     assert dockerfile.exists()
     dockerfile_content = dockerfile.read_text(encoding="utf-8")
@@ -87,6 +91,10 @@ def test_deployment_artifacts_exist() -> None:
     assert "torch" in app_req.read_text(encoding="utf-8")
     assert "transformers" in app_req.read_text(encoding="utf-8")
 
+    demo_dbs = Path("app/demo_databases")
+    assert demo_dbs.is_dir()
+    assert (demo_dbs / "concert_singer" / "concert_singer.sqlite").is_file()
+
     space_readme = Path(".github/hf_space_readme.md")
     assert space_readme.exists()
     content = space_readme.read_text(encoding="utf-8")
@@ -98,9 +106,19 @@ def test_deployment_artifacts_exist() -> None:
     hf_wf_content = hf_deploy_wf.read_text(encoding="utf-8")
     assert "Validate Hugging Face credentials" in hf_wf_content
     assert "HF_TOKEN" in hf_wf_content
+    assert "demo_databases" in hf_wf_content
 
     docker_wf = Path(".github/workflows/docker-publish.yml")
     assert docker_wf.exists()
+
+
+def test_sample_questions_exist() -> None:
+    """Verify predefined sample questions for benchmark databases."""
+    from app.app import SAMPLE_QUESTIONS
+
+    assert "concert_singer" in SAMPLE_QUESTIONS
+    assert len(SAMPLE_QUESTIONS["concert_singer"]) >= 2
+    assert any("singer" in q.lower() for q in SAMPLE_QUESTIONS["concert_singer"])
 
 
 def test_pipeline_model_loading_status() -> None:

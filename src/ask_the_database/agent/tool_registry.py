@@ -27,17 +27,29 @@ class DatabaseToolRegistry:
 
     def inspect_schema(self, table_names: list[str]) -> ToolResult:
         """Inspect table DDL and relationships."""
+        available_tables = self.schema_manager.get_tables()
+        clean_names = [t.strip() for t in table_names if t.strip()]
+
+        # If agent calls inspect_schema([]) or inspect_schema(["*"]), return all table DDLs
+        if not clean_names or clean_names == ["*"] or clean_names == ["all"]:
+            all_ddl = self.schema_manager.get_all_tables_ddl()
+            return ToolResult(
+                action="inspect_schema",
+                output=all_ddl or "Database contains no tables.",
+                is_terminal=False,
+            )
+
         ddl_chunks: list[str] = []
-        for table in table_names:
-            table_clean = table.strip()
-            if not table_clean:
-                continue
+        for table_clean in clean_names:
             ddl = self.schema_manager.get_table_ddl(table_clean)
             if ddl:
                 ddl_chunks.append(ddl)
             else:
-                ddl_chunks.append(f"Error: Table '{table_clean}' not found in database.")
-        output = "\n\n".join(ddl_chunks) if ddl_chunks else "No tables specified."
+                tables_list = ", ".join(f"'{t}'" for t in available_tables)
+                ddl_chunks.append(
+                    f"Error: Table '{table_clean}' not found in database. Available tables: [{tables_list}]."
+                )
+        output = "\n\n".join(ddl_chunks)
         return ToolResult(
             action="inspect_schema",
             output=output,
@@ -67,9 +79,14 @@ class DatabaseToolRegistry:
         """Run trial query against database sandbox."""
         res = self.env.execute(sql_query)
         if not res.success:
+            err_msg = res.error_message or "Unknown execution error"
+            if "no such table" in err_msg.lower():
+                available_tables = self.schema_manager.get_tables()
+                tables_list = ", ".join(f"'{t}'" for t in available_tables)
+                err_msg += f". Available tables: [{tables_list}]"
             return ToolResult(
                 action="execute_sql",
-                output=f"Database Error: {res.error_message}",
+                output=f"Database Error: {err_msg}",
                 is_terminal=False,
             )
         row_preview = str(res.data[:5]) if res.data else "[]"

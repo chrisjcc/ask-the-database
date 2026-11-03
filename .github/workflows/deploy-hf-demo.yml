@@ -100,6 +100,9 @@ jobs:
           mkdir -p app
           cp ../app/app.py app/
           cp ../app/requirements.txt app/
+          if [ -d ../app/demo_databases ]; then
+            cp -r ../app/demo_databases app/
+          fi
 
           # ----------------------------------------------------------
           # Configuration files
@@ -146,6 +149,7 @@ jobs:
           test -f pyproject.toml
           test -f app/app.py
           test -f app/requirements.txt
+          test -d app/demo_databases
           test -f src/ask_the_database/__init__.py
           test -f src/ask_the_database/inference/pipeline.py
 
