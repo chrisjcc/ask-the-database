@@ -1,5 +1,6 @@
 """Inference pipeline for interactive multi-turn text-to-SQL agents."""
 
+import contextlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -79,6 +80,7 @@ class NL2SQLPipeline:
         self.model = model
         self.tokenizer = tokenizer
         self.load_error: str | None = None
+        self.hardware_warning: str | None = None
 
         if self.model is None and self.model_path:
             is_local = Path(self.model_path).exists()
@@ -96,15 +98,46 @@ class NL2SQLPipeline:
         try:
             import json
             import logging
+            import os
 
             import torch
             from peft import PeftConfig, PeftModel
             from transformers import AutoModelForCausalLM, AutoTokenizer
 
             assert self.model_path is not None
+            has_cuda = torch.cuda.is_available()
             device_target = self.device
             if device_target == "auto":
-                device_target = "auto" if torch.cuda.is_available() else "cpu"
+                device_target = "auto" if has_cuda else "cpu"
+
+            # Detect total physical RAM in GB
+            ram_gb = 0.0
+            with contextlib.suppress(Exception):
+                ram_gb = (os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")) / (1024**3)
+
+            # Hardware memory guardrail for CPU environments
+            if not has_cuda:
+                # If RAM is genuinely insufficient for 7B model (< 20 GB, e.g. 16 GB Basic tier)
+                if 0 < ram_gb < 20.0 and not os.getenv("FORCE_CPU_MODEL_LOAD"):
+                    raise RuntimeError(
+                        f"CUDA GPU not detected and system RAM ({ram_gb:.1f} GB) is insufficient for 7B parameter model. "
+                        "Skipping neural model load to prevent container OOM termination. "
+                        "Switch Space to T4 GPU or upgrade to >= 32 GB RAM to activate neural inference."
+                    )
+
+                # If system RAM is sufficient (>= 20 GB, e.g. 32 GB CPU upgrade plan)
+                ram_str = f" ({ram_gb:.0f} GB RAM detected)" if ram_gb > 0 else ""
+                self.hardware_warning = (
+                    f"CUDA GPU not detected. Running in CPU mode{ram_str}. "
+                    "Neural model loaded successfully; switching Space to a T4 GPU in Space Settings "
+                    "would yield significantly faster inference performance."
+                )
+                logging.getLogger(__name__).info(self.hardware_warning)
+
+                # Optimize CPU thread allocation across available cores
+                with contextlib.suppress(Exception):
+                    num_cpus = os.cpu_count() or 4
+                    torch.set_num_threads(min(8, num_cpus))
 
             path_obj = Path(self.model_path)
             target_path = path_obj
@@ -227,8 +260,11 @@ class NL2SQLPipeline:
                 prompt = format_chatml_prompt(messages)
 
             inputs = self.tokenizer(prompt, return_tensors="pt")
-            if hasattr(self.model, "device"):
-                inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
+            device = getattr(self.model, "device", None)
+            if device is None and hasattr(self.model, "base_model"):
+                device = getattr(self.model.base_model, "device", None)
+            if device is not None:
+                inputs = {k: v.to(device) for k, v in inputs.items()}
             gen_kwargs: dict[str, Any] = {
                 "max_new_tokens": 256,
                 "do_sample": do_sample,

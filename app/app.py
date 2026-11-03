@@ -83,6 +83,8 @@ def main() -> None:
     pipeline = get_pipeline(model_path, max_turns)
     if pipeline.is_model_loaded:
         st.sidebar.success(f"🟢 **Neural Model Active**\n\nLoaded: `{model_path}`")
+        if getattr(pipeline, "hardware_warning", None):
+            st.sidebar.info(f"ℹ️ **Performance Notice:**\n\n{pipeline.hardware_warning}")
     else:
         st.sidebar.warning(
             "🟡 **Offline Mock Fallback Active**\n\n"
