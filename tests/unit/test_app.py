@@ -84,6 +84,8 @@ def test_deployment_artifacts_exist() -> None:
     app_req = Path("app/requirements.txt")
     assert app_req.exists()
     assert "streamlit" in app_req.read_text(encoding="utf-8")
+    assert "torch" in app_req.read_text(encoding="utf-8")
+    assert "transformers" in app_req.read_text(encoding="utf-8")
 
     space_readme = Path(".github/hf_space_readme.md")
     assert space_readme.exists()
@@ -118,3 +120,33 @@ def test_pipeline_model_loading_status() -> None:
         available_tables=["singer"],
     )
     assert "inspect_schema" in step_output or "SELECT" in step_output
+
+
+def test_pipeline_hardware_memory_guardrail(monkeypatch) -> None:
+    """Verify memory guardrail prevents OOM on low-RAM CPU and warns on 32GB CPU."""
+    import torch
+
+    # Case 1: Low RAM CPU (< 20 GB) triggers OOM guardrail
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(
+        "os.sysconf", lambda name: 4096 if "PAGE_SIZE" in name else 4194304
+    )  # 16 GB
+
+    p_low_ram = NL2SQLPipeline(model_path="chrisjcc/ask-the-database", max_turns=3)
+    assert not p_low_ram.is_model_loaded
+    assert p_low_ram.load_error is not None
+    assert "insufficient for 7B parameter model" in p_low_ram.load_error
+    assert "16.0 GB" in p_low_ram.load_error
+
+    # Case 2: 32 GB RAM CPU plan allows loading and sets hardware_warning
+    monkeypatch.setattr(
+        "os.sysconf", lambda name: 4096 if "PAGE_SIZE" in name else 8388608
+    )  # 32 GB
+    monkeypatch.setattr(
+        "peft.PeftConfig.from_pretrained",
+        lambda *a, **k: (_ for _ in ()).throw(ValueError("mock error")),
+    )
+    p_32gb = NL2SQLPipeline(model_path="chrisjcc/ask-the-database", max_turns=3)
+    assert p_32gb.hardware_warning is not None
+    assert "32 GB RAM detected" in p_32gb.hardware_warning
+    assert "T4 GPU" in p_32gb.hardware_warning

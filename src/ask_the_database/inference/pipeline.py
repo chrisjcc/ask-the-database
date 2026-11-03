@@ -1,5 +1,6 @@
 """Inference pipeline for interactive multi-turn text-to-SQL agents."""
 
+import contextlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -79,6 +80,7 @@ class NL2SQLPipeline:
         self.model = model
         self.tokenizer = tokenizer
         self.load_error: str | None = None
+        self.hardware_warning: str | None = None
 
         if self.model is None and self.model_path:
             is_local = Path(self.model_path).exists()
@@ -96,15 +98,61 @@ class NL2SQLPipeline:
         try:
             import json
             import logging
+            import os
 
             import torch
             from peft import PeftConfig, PeftModel
             from transformers import AutoModelForCausalLM, AutoTokenizer
 
             assert self.model_path is not None
+            has_cuda = torch.cuda.is_available()
             device_target = self.device
             if device_target == "auto":
-                device_target = "auto" if torch.cuda.is_available() else "cpu"
+                device_target = "auto" if has_cuda else "cpu"
+
+            # Detect total physical RAM in GB
+            ram_gb = 0.0
+            with contextlib.suppress(Exception):
+                ram_gb = (os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")) / (1024**3)
+
+            def _check_hardware_guardrail(candidate_name: str) -> None:
+                """Guard against OOM termination when loading large 7B+ LLMs on low-RAM CPUs."""
+                if has_cuda or os.getenv("FORCE_CPU_MODEL_LOAD"):
+                    return
+                name_lower = str(candidate_name).lower()
+                is_large = any(
+                    marker in name_lower
+                    for marker in [
+                        "7b",
+                        "8b",
+                        "13b",
+                        "14b",
+                        "32b",
+                        "70b",
+                        "ask-the-database",
+                        "qwen2.5-coder",
+                    ]
+                )
+                if not is_large:
+                    return
+
+                if 0 < ram_gb < 20.0:
+                    raise RuntimeError(
+                        f"CUDA GPU not detected and system RAM ({ram_gb:.1f} GB) is insufficient for 7B parameter model. "
+                        "Skipping neural model load to prevent container OOM termination. "
+                        "Switch Space to T4 GPU or upgrade to >= 32 GB RAM to activate neural inference."
+                    )
+
+                ram_str = f" ({ram_gb:.0f} GB RAM detected)" if ram_gb > 0 else ""
+                self.hardware_warning = (
+                    f"CUDA GPU not detected. Running in CPU mode{ram_str}. "
+                    "Neural model loaded successfully; switching Space to a T4 GPU in Space Settings "
+                    "would yield significantly faster inference performance."
+                )
+                logging.getLogger(__name__).info(self.hardware_warning)
+                with contextlib.suppress(Exception):
+                    num_cpus = os.cpu_count() or 4
+                    torch.set_num_threads(min(8, num_cpus))
 
             path_obj = Path(self.model_path)
             target_path = path_obj
@@ -139,6 +187,7 @@ class NL2SQLPipeline:
                     base_model_name = conf.get(
                         "base_model_name_or_path", "Qwen/Qwen2.5-Coder-7B-Instruct"
                     )
+                    _check_hardware_guardrail(base_model_name)
                     self.tokenizer = AutoTokenizer.from_pretrained(
                         base_model_name, trust_remote_code=True
                     )
@@ -150,6 +199,7 @@ class NL2SQLPipeline:
                     )
                     self.model = PeftModel.from_pretrained(base_model, str(target_path))
                 else:
+                    _check_hardware_guardrail(str(target_path))
                     self.tokenizer = AutoTokenizer.from_pretrained(
                         str(target_path), trust_remote_code=True
                     )
@@ -162,6 +212,7 @@ class NL2SQLPipeline:
             else:
                 # Load from Hugging Face Hub (remote repo ID)
                 hub_repo_id = self.model_path
+                _check_hardware_guardrail(hub_repo_id)
                 logging.getLogger(__name__).info(
                     "Attempting to download model from Hugging Face Hub: %s", hub_repo_id
                 )
@@ -227,8 +278,11 @@ class NL2SQLPipeline:
                 prompt = format_chatml_prompt(messages)
 
             inputs = self.tokenizer(prompt, return_tensors="pt")
-            if hasattr(self.model, "device"):
-                inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
+            device = getattr(self.model, "device", None)
+            if device is None and hasattr(self.model, "base_model"):
+                device = getattr(self.model.base_model, "device", None)
+            if device is not None:
+                inputs = {k: v.to(device) for k, v in inputs.items()}
             gen_kwargs: dict[str, Any] = {
                 "max_new_tokens": 256,
                 "do_sample": do_sample,

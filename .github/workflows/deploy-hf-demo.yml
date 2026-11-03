@@ -3,6 +3,7 @@ name: Deploy HF Demo
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -16,18 +17,18 @@ jobs:
       - name: Check out released version
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.release.tag_name || github.ref }}
           fetch-depth: 0
 
       - name: Validate release
         run: |
           set -e
 
-          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          RELEASE_TAG="${{ github.event.release.tag_name || github.ref_name }}"
           RELEASE_SHA="$(git rev-parse HEAD)"
 
-          echo "Deploying GitHub release:"
-          echo "  Tag: ${RELEASE_TAG}"
+          echo "Deploying to Hugging Face Space:"
+          echo "  Tag/Ref: ${RELEASE_TAG}"
           echo "  Commit: ${RELEASE_SHA}"
 
           echo "Released source tree:"
@@ -153,8 +154,8 @@ jobs:
       - name: Commit deployment
         working-directory: hf_space
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_SHA: ${{ github.event.release.target_commitish }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+          RELEASE_SHA: ${{ github.event.release.target_commitish || github.sha }}
         run: |
           set -e
 
