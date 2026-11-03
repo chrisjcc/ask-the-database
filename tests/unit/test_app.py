@@ -94,6 +94,11 @@ def test_deployment_artifacts_exist() -> None:
     demo_dbs = Path("app/demo_databases")
     assert demo_dbs.is_dir()
     assert (demo_dbs / "concert_singer" / "concert_singer.sqlite").is_file()
+    assert (demo_dbs / "pets_1" / "pets_1.sqlite").is_file()
+
+    # Ensure all demo databases satisfy Hugging Face Hub standard git limits (<= 100KB)
+    for db_file in demo_dbs.glob("*/*.sqlite"):
+        assert db_file.stat().st_size <= 100 * 1024, f"{db_file} exceeds 100KB limit"
 
     space_readme = Path(".github/hf_space_readme.md")
     assert space_readme.exists()

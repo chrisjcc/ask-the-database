@@ -149,9 +149,15 @@ jobs:
           test -f pyproject.toml
           test -f app/app.py
           test -f app/requirements.txt
-          test -d app/demo_databases
           test -f src/ask_the_database/__init__.py
           test -f src/ask_the_database/inference/pipeline.py
+
+          echo "Validating demo database file sizes (must be <= 100KB)..."
+          oversized=$(find app/demo_databases -type f -size +100k)
+          if [ -n "$oversized" ]; then
+            echo "ERROR: Demo databases exceed 100KB limit: $oversized"
+            exit 1
+          fi
 
           echo "Deployment payload validation passed."
 
