@@ -74,8 +74,24 @@ def main() -> None:
         st.sidebar.warning(f"Database file not found at: {db_path}")
 
     st.sidebar.header("Model Configuration")
-    model_path = st.sidebar.text_input("Checkpoint Path:", value="models/rlvr/final")
+    default_model = (
+        "models/rlvr/final" if Path("models/rlvr/final").exists() else "chrisjcc/ask-the-database"
+    )
+    model_path = st.sidebar.text_input("Checkpoint Path or HF Hub Repo:", value=default_model)
     max_turns = st.sidebar.slider("Max Interaction Turns:", min_value=1, max_value=10, value=5)
+
+    pipeline = get_pipeline(model_path, max_turns)
+    if pipeline.is_model_loaded:
+        st.sidebar.success(f"🟢 **Neural Model Active**\n\nLoaded: `{model_path}`")
+    else:
+        st.sidebar.warning(
+            "🟡 **Offline Mock Fallback Active**\n\n"
+            "No neural weights loaded at the checkpoint path. "
+            "Agent is running in deterministic heuristic exploration mode."
+        )
+        if pipeline.load_error:
+            with st.sidebar.expander("Model Loading Diagnostics", expanded=False):
+                st.caption(f"**Error Details:**\n```\n{pipeline.load_error}\n```")
 
     st.write(
         "Ask a complex natural language question about the database. "
@@ -102,7 +118,7 @@ def main() -> None:
                 st.markdown(f"### Final SQL Query:\n```sql\n{msg['query']}\n```")
             if msg.get("data") is not None and msg.get("columns"):
                 df = pd.DataFrame(msg["data"], columns=msg["columns"])
-                st.dataframe(df, use_container_width=True)
+                st.dataframe(df, width="stretch")
 
     # User chat input
     placeholder = "e.g., Which singer has the highest average song release year?"
@@ -135,6 +151,12 @@ def main() -> None:
                     )
                 status.update(label="Exploration complete!", state="complete")
 
+            if not pipeline.is_model_loaded:
+                st.caption(
+                    "⚠️ *Executed via deterministic heuristic fallback (no neural weights loaded at checkpoint path).* "
+                    "For neural text-to-SQL inference, load a fine-tuned model checkpoint."
+                )
+
             st.markdown(f"### Final SQL Query:\n```sql\n{traj.final_query}\n```")
 
             result_data = None
@@ -145,7 +167,7 @@ def main() -> None:
                     result_columns = traj.final_execution_result.columns
                     if result_columns:
                         df = pd.DataFrame(result_data, columns=result_columns)
-                        st.dataframe(df, use_container_width=True)
+                        st.dataframe(df, width="stretch")
                     else:
                         st.info("Query executed successfully with no returned rows.")
                 else:
