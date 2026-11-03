@@ -23,10 +23,10 @@ SAMPLE_QUESTIONS: dict[str, list[str]] = {
         "What is the average horsepower of cars with 4 cylinders?",
         "List the names of all models made by Ford.",
     ],
-    "world_1": [
-        "What are the official languages spoken in Switzerland?",
-        "What are the top 5 countries with the highest life expectancy?",
-        "How many cities in the database have a population over 1 million?",
+    "pets_1": [
+        "Find the pet type and weight of the heaviest pet.",
+        "How many students have a pet?",
+        "What is the average age of students who have a dog?",
     ],
     "flight_2": [
         "Which airline operates the most flights?",
