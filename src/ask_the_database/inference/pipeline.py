@@ -115,17 +115,34 @@ class NL2SQLPipeline:
             with contextlib.suppress(Exception):
                 ram_gb = (os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")) / (1024**3)
 
-            # Hardware memory guardrail for CPU environments
-            if not has_cuda:
-                # If RAM is genuinely insufficient for 7B model (< 20 GB, e.g. 16 GB Basic tier)
-                if 0 < ram_gb < 20.0 and not os.getenv("FORCE_CPU_MODEL_LOAD"):
+            def _check_hardware_guardrail(candidate_name: str) -> None:
+                """Guard against OOM termination when loading large 7B+ LLMs on low-RAM CPUs."""
+                if has_cuda or os.getenv("FORCE_CPU_MODEL_LOAD"):
+                    return
+                name_lower = str(candidate_name).lower()
+                is_large = any(
+                    marker in name_lower
+                    for marker in [
+                        "7b",
+                        "8b",
+                        "13b",
+                        "14b",
+                        "32b",
+                        "70b",
+                        "ask-the-database",
+                        "qwen2.5-coder",
+                    ]
+                )
+                if not is_large:
+                    return
+
+                if 0 < ram_gb < 20.0:
                     raise RuntimeError(
                         f"CUDA GPU not detected and system RAM ({ram_gb:.1f} GB) is insufficient for 7B parameter model. "
                         "Skipping neural model load to prevent container OOM termination. "
                         "Switch Space to T4 GPU or upgrade to >= 32 GB RAM to activate neural inference."
                     )
 
-                # If system RAM is sufficient (>= 20 GB, e.g. 32 GB CPU upgrade plan)
                 ram_str = f" ({ram_gb:.0f} GB RAM detected)" if ram_gb > 0 else ""
                 self.hardware_warning = (
                     f"CUDA GPU not detected. Running in CPU mode{ram_str}. "
@@ -133,8 +150,6 @@ class NL2SQLPipeline:
                     "would yield significantly faster inference performance."
                 )
                 logging.getLogger(__name__).info(self.hardware_warning)
-
-                # Optimize CPU thread allocation across available cores
                 with contextlib.suppress(Exception):
                     num_cpus = os.cpu_count() or 4
                     torch.set_num_threads(min(8, num_cpus))
@@ -172,6 +187,7 @@ class NL2SQLPipeline:
                     base_model_name = conf.get(
                         "base_model_name_or_path", "Qwen/Qwen2.5-Coder-7B-Instruct"
                     )
+                    _check_hardware_guardrail(base_model_name)
                     self.tokenizer = AutoTokenizer.from_pretrained(
                         base_model_name, trust_remote_code=True
                     )
@@ -183,6 +199,7 @@ class NL2SQLPipeline:
                     )
                     self.model = PeftModel.from_pretrained(base_model, str(target_path))
                 else:
+                    _check_hardware_guardrail(str(target_path))
                     self.tokenizer = AutoTokenizer.from_pretrained(
                         str(target_path), trust_remote_code=True
                     )
@@ -195,6 +212,7 @@ class NL2SQLPipeline:
             else:
                 # Load from Hugging Face Hub (remote repo ID)
                 hub_repo_id = self.model_path
+                _check_hardware_guardrail(hub_repo_id)
                 logging.getLogger(__name__).info(
                     "Attempting to download model from Hugging Face Hub: %s", hub_repo_id
                 )

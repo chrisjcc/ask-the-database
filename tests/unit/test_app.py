@@ -132,7 +132,7 @@ def test_pipeline_hardware_memory_guardrail(monkeypatch) -> None:
         "os.sysconf", lambda name: 4096 if "PAGE_SIZE" in name else 4194304
     )  # 16 GB
 
-    p_low_ram = NL2SQLPipeline(model_path="dummy-org/nonexistent-model-repo", max_turns=3)
+    p_low_ram = NL2SQLPipeline(model_path="chrisjcc/ask-the-database", max_turns=3)
     assert not p_low_ram.is_model_loaded
     assert p_low_ram.load_error is not None
     assert "insufficient for 7B parameter model" in p_low_ram.load_error
@@ -146,7 +146,7 @@ def test_pipeline_hardware_memory_guardrail(monkeypatch) -> None:
         "peft.PeftConfig.from_pretrained",
         lambda *a, **k: (_ for _ in ()).throw(ValueError("mock error")),
     )
-    p_32gb = NL2SQLPipeline(model_path="dummy-org/nonexistent-model-repo", max_turns=3)
+    p_32gb = NL2SQLPipeline(model_path="chrisjcc/ask-the-database", max_turns=3)
     assert p_32gb.hardware_warning is not None
     assert "32 GB RAM detected" in p_32gb.hardware_warning
     assert "T4 GPU" in p_32gb.hardware_warning
