@@ -493,11 +493,14 @@ def run_deployment_pipeline(cfg: Any) -> None:
                 w_path,
                 model_repo,
             )
+            ignore_patterns = ["*.log", "*.tmp", "__pycache__", ".git*"]
+            if not getattr(cfg, "include_checkpoints", False):
+                ignore_patterns.append("checkpoint-*")
             api.upload_folder(
                 folder_path=str(w_path),
                 repo_id=model_repo,
                 repo_type="model",
-                ignore_patterns=["*.log", "*.tmp", "__pycache__", ".git*"],
+                ignore_patterns=ignore_patterns,
             )
             logger.info("Model weights upload to %s completed.", model_repo)
         else:
@@ -600,6 +603,11 @@ def main() -> None:
         type=str,
         default=None,
         help="Optional local path to processed dataset directory (e.g. data/processed) to upload.",
+    )
+    parser.add_argument(
+        "--include-checkpoints",
+        action="store_true",
+        help="Include intermediate training checkpoints (checkpoint-*) when uploading model weights (default: False).",
     )
     parser.add_argument(
         "--publish-cards",
