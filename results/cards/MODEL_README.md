@@ -50,13 +50,15 @@ The model is trained to interleave reasoning thoughts with procedural tool calls
 
 ## Empirical Benchmark & Decision Gate Results
 
-### 1. Benchmark Execution Accuracy
-| Evaluation Suite | SFT Baseline (Single-Turn) | Harness-Zero SFT (Multi-Turn) | Status |
-| :--- | :--- | :--- | :--- |
-| **Spider Dev Execution Accuracy (EX)** | 1.45% | **100.0%** (Reviewed Schemas) | Complete Parity |
-| **Zero-Budget Harness Pass Rate** | 20.0% (7/35) | **100.0%** (35/35) | **+80.0% Improvement** |
-| **Schema Hallucinations** | 10 misses | **0 misses** | **100% Reduction** |
-| **Mutation Bug Sensitivity** | 100.0% caught | **100.0% caught** | Zero Escapes |
+### 1. Benchmark Execution Accuracy (Held-Out Spider Dev)
+| Benchmark | Total Samples | Execution Accuracy (EX) | Test Suite Accuracy (TS) | Valid Execution Rate (VA) | Recovery Rate (MRR) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Spider Dev** | 1034 | **20.99%** | **19.92%** | **30.56%** | **11.38%** |
+
+| Comparative Condition | Test Suite (TS) | Execution (EX) | Multi-Turn Recovery (MRR) | Status |
+| :--- | :---: | :---: | :---: | :--- |
+| **Stage 1 (Single-Turn Baseline SFT)** | 1.45% | 1.45% | 0.00% | Exploration Collapse |
+| **Stage 2 (Harness-Zero GRPO RLVR)** | **19.92%** | **20.99%** | **11.38%** | **+18.47 pp TS (+13.7×)** |
 
 
 ### 2. Pre-Registered Zero-Budget MVE Decision Gates (Live Cluster Telemetry)
