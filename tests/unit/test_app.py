@@ -42,10 +42,14 @@ def test_init_demo_db(tmp_path: Path) -> None:
     sm = SchemaManager(str(db_path))
     tables = sm.get_tables()
     assert "singer" in tables
+    assert "stadium" in tables
+    assert "concert" in tables
+    assert "singer_in_concert" in tables
 
     ddl = sm.get_all_tables_ddl()
     assert "CREATE TABLE" in ddl
     assert "singer" in ddl
+    assert "stadium" in ddl
 
 
 def test_get_pipeline_caching() -> None:
@@ -74,7 +78,7 @@ def test_demo_tunnel_slurm_script() -> None:
 
 
 def test_deployment_artifacts_exist() -> None:
-    """Verify Dockerfile, HF Space readme, and workflow configuration files."""
+    """Verify Dockerfile, HF Space readme, demo databases, and workflow configuration files."""
     dockerfile = Path("Dockerfile")
     assert dockerfile.exists()
     dockerfile_content = dockerfile.read_text(encoding="utf-8")
@@ -84,6 +88,17 @@ def test_deployment_artifacts_exist() -> None:
     app_req = Path("app/requirements.txt")
     assert app_req.exists()
     assert "streamlit" in app_req.read_text(encoding="utf-8")
+    assert "torch" in app_req.read_text(encoding="utf-8")
+    assert "transformers" in app_req.read_text(encoding="utf-8")
+
+    demo_dbs = Path("app/demo_databases")
+    assert demo_dbs.is_dir()
+    assert (demo_dbs / "concert_singer" / "concert_singer.sqlite").is_file()
+    assert (demo_dbs / "pets_1" / "pets_1.sqlite").is_file()
+
+    # Ensure all demo databases satisfy Hugging Face Hub standard git limits (<= 100KB)
+    for db_file in demo_dbs.glob("*/*.sqlite"):
+        assert db_file.stat().st_size <= 100 * 1024, f"{db_file} exceeds 100KB limit"
 
     space_readme = Path(".github/hf_space_readme.md")
     assert space_readme.exists()
@@ -93,6 +108,68 @@ def test_deployment_artifacts_exist() -> None:
 
     hf_deploy_wf = Path(".github/workflows/deploy-hf-demo.yml")
     assert hf_deploy_wf.exists()
+    hf_wf_content = hf_deploy_wf.read_text(encoding="utf-8")
+    assert "Validate Hugging Face credentials" in hf_wf_content
+    assert "HF_TOKEN" in hf_wf_content
+    assert "demo_databases" in hf_wf_content
 
     docker_wf = Path(".github/workflows/docker-publish.yml")
     assert docker_wf.exists()
+
+
+def test_sample_questions_exist() -> None:
+    """Verify predefined sample questions for benchmark databases."""
+    from app.app import SAMPLE_QUESTIONS
+
+    assert "concert_singer" in SAMPLE_QUESTIONS
+    assert len(SAMPLE_QUESTIONS["concert_singer"]) >= 2
+    assert any("singer" in q.lower() for q in SAMPLE_QUESTIONS["concert_singer"])
+
+
+def test_pipeline_model_loading_status() -> None:
+    """Verify is_model_loaded reflects weights loading and handles missing checkpoints."""
+    # Offline dummy path
+    p_offline = NL2SQLPipeline(model_path="nonexistent/local/path", max_turns=3)
+    assert not p_offline.is_model_loaded
+
+    # Dummy remote hub path (should fail gracefully and record load_error)
+    p_remote = NL2SQLPipeline(model_path="dummy-org/nonexistent-model-repo", max_turns=3)
+    assert not p_remote.is_model_loaded
+    assert p_remote.load_error is not None
+
+    # Fallback heuristic generation remains functional
+    step_output = p_remote.generate_step(
+        messages=[{"role": "user", "content": "list singers"}],
+        available_tables=["singer"],
+    )
+    assert "inspect_schema" in step_output or "SELECT" in step_output
+
+
+def test_pipeline_hardware_memory_guardrail(monkeypatch) -> None:
+    """Verify memory guardrail prevents OOM on low-RAM CPU and warns on 32GB CPU."""
+    import torch
+
+    # Case 1: Low RAM CPU (< 20 GB) triggers OOM guardrail
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(
+        "os.sysconf", lambda name: 4096 if "PAGE_SIZE" in name else 4194304
+    )  # 16 GB
+
+    p_low_ram = NL2SQLPipeline(model_path="chrisjcc/ask-the-database", max_turns=3)
+    assert not p_low_ram.is_model_loaded
+    assert p_low_ram.load_error is not None
+    assert "insufficient for 7B parameter model" in p_low_ram.load_error
+    assert "16.0 GB" in p_low_ram.load_error
+
+    # Case 2: 32 GB RAM CPU plan allows loading and sets hardware_warning
+    monkeypatch.setattr(
+        "os.sysconf", lambda name: 4096 if "PAGE_SIZE" in name else 8388608
+    )  # 32 GB
+    monkeypatch.setattr(
+        "peft.PeftConfig.from_pretrained",
+        lambda *a, **k: (_ for _ in ()).throw(ValueError("mock error")),
+    )
+    p_32gb = NL2SQLPipeline(model_path="chrisjcc/ask-the-database", max_turns=3)
+    assert p_32gb.hardware_warning is not None
+    assert "32 GB RAM detected" in p_32gb.hardware_warning
+    assert "T4 GPU" in p_32gb.hardware_warning

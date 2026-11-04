@@ -49,6 +49,7 @@ MODEL_PATHS: dict[str, str] = {
     "sft_baseline": "models/mve/sft_baseline",
     "filtered_rollouts": "models/mve/filtered_rollouts",
     "harness_zero": "models/sft/harness_zero",
+    "harness_zero_grpo": "models/rlvr/harness_zero_grpo",
     "rlvr_skyrl": "models/rlvr/skyrl_agent",
 }
 
@@ -56,8 +57,8 @@ DEFAULT_REGISTRY_NAME = "Model"
 DEFAULT_REGISTRY_COLLECTION = "AskTheDatabase-Models"
 DEFAULT_REGISTRY_ALIAS = "production"
 DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-Coder-7B-Instruct"
-DEFAULT_MODEL_REPO = "chrisjcc/ask-the-database-coder-7b"
-DEFAULT_DATASET_REPO = "chrisjcc/ask-the-database-trajectories"
+DEFAULT_MODEL_REPO = "chrisjcc/ask-the-database"
+DEFAULT_DATASET_REPO = "chrisjcc/ask-the-database"
 PROMOTION_FILE = "model_promotion.json"
 
 
@@ -223,6 +224,7 @@ def generate_model_card(
         "sft_baseline": "Single-Turn SFT Baseline (Greedy Generation)",
         "filtered_rollouts": "SFT on Filtered Successful Rollouts",
         "harness_zero": "Harness-Zero SFT (Multi-Turn Interactive Exploration)",
+        "harness_zero_grpo": "Harness-Zero GRPO Policy (Multi-Turn RLVR with Verifiable Rewards)",
         "rlvr_skyrl": "Multi-Turn RLVR Agent (SkyRL / GRPO with Verifiable Rewards)",
     }
     training_method = variant_names.get(model_variant, model_variant.upper())
@@ -427,14 +429,35 @@ def run_deployment_pipeline(cfg: Any) -> None:
     base_model = getattr(cfg, "base_model", DEFAULT_BASE_MODEL)
     release_tag = getattr(cfg, "release_tag", "")
 
+    # Auto-infer model_variant from weights_dir if left at default
+    weights_dir = getattr(cfg, "weights_dir", None)
+    if weights_dir and model_variant == "harness_zero":
+        w_lower = str(weights_dir).lower()
+        if "harness_zero_grpo" in w_lower or "grpo" in w_lower:
+            model_variant = "harness_zero_grpo"
+            logger.info(
+                "Auto-inferred model_variant '%s' from weights_dir: %s",
+                model_variant,
+                weights_dir,
+            )
+
     summary_data: dict[str, Any] | None = None
     summary_json = getattr(cfg, "summary_json", "results/evaluation_summary.json")
-    if summary_json and Path(summary_json).is_file():
-        try:
-            summary_data = json.loads(Path(summary_json).read_text(encoding="utf-8"))
-            logger.info("Loaded benchmark summary for deployment from: %s", summary_json)
-        except Exception as e:
-            logger.warning("Could not read summary JSON: %s", e)
+    summary_candidates = [
+        summary_json,
+        "results/evaluation_summary.json",
+        "results/eval_rlvr_harness_zero/summary.json",
+    ]
+    for s_path in summary_candidates:
+        if s_path and Path(s_path).is_file():
+            try:
+                candidate_data = json.loads(Path(s_path).read_text(encoding="utf-8"))
+                if "spider_dev" in candidate_data:
+                    summary_data = candidate_data
+                    logger.info("Loaded benchmark summary for deployment from: %s", s_path)
+                    break
+            except Exception as e:
+                logger.warning("Could not read summary JSON %s: %s", s_path, e)
 
     # 2. Upload dataset card and dataset files if configured
     try:
@@ -444,10 +467,14 @@ def run_deployment_pipeline(cfg: Any) -> None:
 
     with tempfile.TemporaryDirectory(prefix="ask-the-database-data-") as tmp_dir:
         readme_path = Path(tmp_dir) / "README.md"
-        readme_path.write_text(
-            generate_dataset_card(dataset_repo=dataset_repo),
-            encoding="utf-8",
-        )
+        pre_gen_data = Path("results/cards/DATASET_README.md")
+        if pre_gen_data.is_file():
+            readme_path.write_text(pre_gen_data.read_text(encoding="utf-8"), encoding="utf-8")
+        else:
+            readme_path.write_text(
+                generate_dataset_card(dataset_repo=dataset_repo),
+                encoding="utf-8",
+            )
         logger.info("Uploading Dataset Card to Hugging Face: %s", dataset_repo)
         api.upload_file(
             path_or_fileobj=str(readme_path),
@@ -464,17 +491,22 @@ def run_deployment_pipeline(cfg: Any) -> None:
 
     with tempfile.TemporaryDirectory(prefix="ask-the-database-model-") as tmp_dir:
         readme_path = Path(tmp_dir) / "README.md"
-        readme_path.write_text(
-            generate_model_card(
-                model_repo=model_repo,
-                model_variant=model_variant,
-                dataset_repo=dataset_repo,
-                base_model=base_model,
-                release_tag=release_tag,
-                results_summary=summary_data,
-            ),
-            encoding="utf-8",
-        )
+        pre_gen_model = Path("results/cards/MODEL_README.md")
+        if pre_gen_model.is_file() and model_variant in pre_gen_model.read_text(encoding="utf-8"):
+            logger.info("Using verified pre-generated Model Card from: %s", pre_gen_model)
+            readme_path.write_text(pre_gen_model.read_text(encoding="utf-8"), encoding="utf-8")
+        else:
+            readme_path.write_text(
+                generate_model_card(
+                    model_repo=model_repo,
+                    model_variant=model_variant,
+                    dataset_repo=dataset_repo,
+                    base_model=base_model,
+                    release_tag=release_tag,
+                    results_summary=summary_data,
+                ),
+                encoding="utf-8",
+            )
         logger.info("Uploading Model Card to Hugging Face: %s", model_repo)
         api.upload_file(
             path_or_fileobj=str(readme_path),
@@ -482,6 +514,49 @@ def run_deployment_pipeline(cfg: Any) -> None:
             repo_id=model_repo,
             repo_type="model",
         )
+
+    # 4. Optional: Upload model weights / checkpoint directory
+    weights_dir = getattr(cfg, "weights_dir", None)
+    if weights_dir:
+        w_path = Path(weights_dir)
+        if w_path.is_dir():
+            logger.info(
+                "Uploading model weights from '%s' to Hugging Face model repo: %s",
+                w_path,
+                model_repo,
+            )
+            ignore_patterns = ["*.log", "*.tmp", "__pycache__", ".git*"]
+            if not getattr(cfg, "include_checkpoints", False):
+                ignore_patterns.append("checkpoint-*")
+            api.upload_folder(
+                folder_path=str(w_path),
+                repo_id=model_repo,
+                repo_type="model",
+                ignore_patterns=ignore_patterns,
+            )
+            logger.info("Model weights upload to %s completed.", model_repo)
+        else:
+            logger.warning("Specified weights directory '%s' does not exist.", weights_dir)
+
+    # 5. Optional: Upload dataset directory
+    dataset_dir = getattr(cfg, "dataset_dir", None)
+    if dataset_dir:
+        d_path = Path(dataset_dir)
+        if d_path.is_dir():
+            logger.info(
+                "Uploading dataset files from '%s' to Hugging Face dataset repo: %s",
+                d_path,
+                dataset_repo,
+            )
+            api.upload_folder(
+                folder_path=str(d_path),
+                repo_id=dataset_repo,
+                repo_type="dataset",
+                ignore_patterns=["*.tmp", "__pycache__", ".git*"],
+            )
+            logger.info("Dataset files upload to %s completed.", dataset_repo)
+        else:
+            logger.warning("Specified dataset directory '%s' does not exist.", dataset_dir)
 
     logger.info("Hugging Face Hub publication completed successfully.")
 
@@ -516,7 +591,7 @@ def main() -> None:
         "--model-variant",
         type=str,
         default="harness_zero",
-        choices=["base", "sft_baseline", "filtered_rollouts", "harness_zero", "rlvr_skyrl"],
+        choices=list(MODEL_PATHS.keys()),
         help="Model variant for the model card (default: harness_zero).",
     )
     parser.add_argument(
@@ -550,11 +625,28 @@ def main() -> None:
         help="Path to evaluation summary JSON file (default: results/evaluation_summary.json).",
     )
     parser.add_argument(
+        "--weights-dir",
+        type=str,
+        default=None,
+        help="Optional local path to model weights/adapter directory to upload to the model repository.",
+    )
+    parser.add_argument(
+        "--dataset-dir",
+        type=str,
+        default=None,
+        help="Optional local path to processed dataset directory (e.g. data/processed) to upload.",
+    )
+    parser.add_argument(
+        "--include-checkpoints",
+        action="store_true",
+        help="Include intermediate training checkpoints (checkpoint-*) when uploading model weights (default: False).",
+    )
+    parser.add_argument(
         "--publish-cards",
         "--deploy",
         action="store_true",
         dest="deploy",
-        help="Deploy/publish generated README cards to Hugging Face Hub (requires HF_TOKEN).",
+        help="Deploy/publish generated README cards and artifacts to Hugging Face Hub (requires HF_TOKEN).",
     )
 
     args = parser.parse_args()

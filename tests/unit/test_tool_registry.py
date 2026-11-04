@@ -23,12 +23,34 @@ def test_inspect_schema_valid_tables(sample_sqlite_db: Path) -> None:
 
 
 def test_inspect_schema_missing_table(sample_sqlite_db: Path) -> None:
-    """Test inspect_schema gracefully handles non-existent tables."""
+    """Test inspect_schema gracefully handles non-existent tables and hints available tables."""
     registry = DatabaseToolRegistry(str(sample_sqlite_db))
     res = registry.inspect_schema(["non_existent_table"])
 
     assert not res.is_terminal
     assert "Error: Table 'non_existent_table' not found" in res.output
+    assert "Available tables:" in res.output
+
+
+def test_inspect_schema_empty_returns_all_tables(sample_sqlite_db: Path) -> None:
+    """Test inspect_schema with empty or wildcard argument returns all DDLs."""
+    registry = DatabaseToolRegistry(str(sample_sqlite_db))
+    res = registry.inspect_schema([])
+    assert "CREATE TABLE departments" in res.output
+    assert "CREATE TABLE users" in res.output
+
+    res_wildcard = registry.inspect_schema(["*"])
+    assert "CREATE TABLE departments" in res_wildcard.output
+    assert "CREATE TABLE users" in res_wildcard.output
+
+
+def test_execute_sql_missing_table_hints_available_tables(sample_sqlite_db: Path) -> None:
+    """Test execute_sql error contains available tables when table is missing."""
+    registry = DatabaseToolRegistry(str(sample_sqlite_db))
+    res = registry.execute_sql("SELECT * FROM ghost_table;")
+    assert "Database Error" in res.output
+    assert "no such table" in res.output.lower()
+    assert "Available tables:" in res.output
 
 
 def test_sample_data_valid_table(sample_sqlite_db: Path) -> None:
