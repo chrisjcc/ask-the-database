@@ -50,15 +50,10 @@ The model is trained to interleave reasoning thoughts with procedural tool calls
 
 ## Empirical Benchmark & Decision Gate Results
 
-### 1. Benchmark Execution Accuracy (Held-Out Spider Dev)
-| Benchmark | Total Samples | Execution Accuracy (EX) | Test Suite Accuracy (TS) | Valid Execution Rate (VA) | Recovery Rate (MRR) |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Spider Dev** | 1034 | **20.99%** | **19.92%** | **30.56%** | **11.38%** |
-
-| Comparative Condition | Test Suite (TS) | Execution (EX) | Multi-Turn Recovery (MRR) | Status |
-| :--- | :---: | :---: | :---: | :--- |
-| **Stage 1 (Single-Turn Baseline SFT)** | 1.45% | 1.45% | 0.00% | Exploration Collapse |
-| **Stage 2 (Harness-Zero GRPO RLVR)** | **19.92%** | **20.99%** | **11.38%** | **+18.47 pp TS (+13.7×)** |
+### 1. Benchmark Execution Accuracy
+| Benchmark | Total Samples | Execution Accuracy (EX) | Test Suite Accuracy (TS) | Valid Execution Rate (VA) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Spider Dev** | 1034 | **20.99%** | **19.92%** | **30.56%** |
 
 
 ### 2. Pre-Registered Zero-Budget MVE Decision Gates (Live Cluster Telemetry)

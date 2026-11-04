@@ -14,14 +14,14 @@ from ask_the_database.inference.pipeline import NL2SQLPipeline
 
 SAMPLE_QUESTIONS: dict[str, list[str]] = {
     "concert_singer": [
-        "Which singer has the highest average song release year?",
-        "What are the names and capacities of all stadiums with capacity over 50,000?",
         "How many concerts were held in each year?",
+        "How many singers are from each country?",
+        "What are the names, locations, and capacities of all stadiums?",
     ],
     "car_1": [
         "Which country produces the highest number of car makers?",
         "What is the average horsepower of cars with 4 cylinders?",
-        "List the names of all models made by Ford.",
+        "List the names and makes of all car models.",
     ],
     "pets_1": [
         "Find the pet type and weight of the heaviest pet.",
@@ -30,12 +30,12 @@ SAMPLE_QUESTIONS: dict[str, list[str]] = {
     ],
     "flight_2": [
         "Which airline operates the most flights?",
-        "What are the names of all airports located in California?",
-        "Find the flight number with the longest distance.",
+        "What are the airport codes, names, and cities for all airports?",
+        "List the flight number and destination airport for all flights.",
     ],
     "singer": [
         "Which singer has the highest net worth?",
-        "List the songs and their sales for each singer.",
+        "List all songs and their sales for each singer.",
     ],
 }
 
