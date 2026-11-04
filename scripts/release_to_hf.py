@@ -429,14 +429,35 @@ def run_deployment_pipeline(cfg: Any) -> None:
     base_model = getattr(cfg, "base_model", DEFAULT_BASE_MODEL)
     release_tag = getattr(cfg, "release_tag", "")
 
+    # Auto-infer model_variant from weights_dir if left at default
+    weights_dir = getattr(cfg, "weights_dir", None)
+    if weights_dir and model_variant == "harness_zero":
+        w_lower = str(weights_dir).lower()
+        if "harness_zero_grpo" in w_lower or "grpo" in w_lower:
+            model_variant = "harness_zero_grpo"
+            logger.info(
+                "Auto-inferred model_variant '%s' from weights_dir: %s",
+                model_variant,
+                weights_dir,
+            )
+
     summary_data: dict[str, Any] | None = None
     summary_json = getattr(cfg, "summary_json", "results/evaluation_summary.json")
-    if summary_json and Path(summary_json).is_file():
-        try:
-            summary_data = json.loads(Path(summary_json).read_text(encoding="utf-8"))
-            logger.info("Loaded benchmark summary for deployment from: %s", summary_json)
-        except Exception as e:
-            logger.warning("Could not read summary JSON: %s", e)
+    summary_candidates = [
+        summary_json,
+        "results/evaluation_summary.json",
+        "results/eval_rlvr_harness_zero/summary.json",
+    ]
+    for s_path in summary_candidates:
+        if s_path and Path(s_path).is_file():
+            try:
+                candidate_data = json.loads(Path(s_path).read_text(encoding="utf-8"))
+                if "spider_dev" in candidate_data:
+                    summary_data = candidate_data
+                    logger.info("Loaded benchmark summary for deployment from: %s", s_path)
+                    break
+            except Exception as e:
+                logger.warning("Could not read summary JSON %s: %s", s_path, e)
 
     # 2. Upload dataset card and dataset files if configured
     try:
@@ -446,10 +467,14 @@ def run_deployment_pipeline(cfg: Any) -> None:
 
     with tempfile.TemporaryDirectory(prefix="ask-the-database-data-") as tmp_dir:
         readme_path = Path(tmp_dir) / "README.md"
-        readme_path.write_text(
-            generate_dataset_card(dataset_repo=dataset_repo),
-            encoding="utf-8",
-        )
+        pre_gen_data = Path("results/cards/DATASET_README.md")
+        if pre_gen_data.is_file():
+            readme_path.write_text(pre_gen_data.read_text(encoding="utf-8"), encoding="utf-8")
+        else:
+            readme_path.write_text(
+                generate_dataset_card(dataset_repo=dataset_repo),
+                encoding="utf-8",
+            )
         logger.info("Uploading Dataset Card to Hugging Face: %s", dataset_repo)
         api.upload_file(
             path_or_fileobj=str(readme_path),
@@ -466,17 +491,22 @@ def run_deployment_pipeline(cfg: Any) -> None:
 
     with tempfile.TemporaryDirectory(prefix="ask-the-database-model-") as tmp_dir:
         readme_path = Path(tmp_dir) / "README.md"
-        readme_path.write_text(
-            generate_model_card(
-                model_repo=model_repo,
-                model_variant=model_variant,
-                dataset_repo=dataset_repo,
-                base_model=base_model,
-                release_tag=release_tag,
-                results_summary=summary_data,
-            ),
-            encoding="utf-8",
-        )
+        pre_gen_model = Path("results/cards/MODEL_README.md")
+        if pre_gen_model.is_file() and model_variant in pre_gen_model.read_text(encoding="utf-8"):
+            logger.info("Using verified pre-generated Model Card from: %s", pre_gen_model)
+            readme_path.write_text(pre_gen_model.read_text(encoding="utf-8"), encoding="utf-8")
+        else:
+            readme_path.write_text(
+                generate_model_card(
+                    model_repo=model_repo,
+                    model_variant=model_variant,
+                    dataset_repo=dataset_repo,
+                    base_model=base_model,
+                    release_tag=release_tag,
+                    results_summary=summary_data,
+                ),
+                encoding="utf-8",
+            )
         logger.info("Uploading Model Card to Hugging Face: %s", model_repo)
         api.upload_file(
             path_or_fileobj=str(readme_path),
