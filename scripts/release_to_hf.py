@@ -223,6 +223,7 @@ def generate_model_card(
         "sft_baseline": "Single-Turn SFT Baseline (Greedy Generation)",
         "filtered_rollouts": "SFT on Filtered Successful Rollouts",
         "harness_zero": "Harness-Zero SFT (Multi-Turn Interactive Exploration)",
+        "harness_zero_grpo": "Harness-Zero GRPO Policy (Multi-Turn RLVR with Verifiable Rewards)",
         "rlvr_skyrl": "Multi-Turn RLVR Agent (SkyRL / GRPO with Verifiable Rewards)",
     }
     training_method = variant_names.get(model_variant, model_variant.upper())
