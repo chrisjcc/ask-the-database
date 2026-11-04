@@ -49,6 +49,7 @@ MODEL_PATHS: dict[str, str] = {
     "sft_baseline": "models/mve/sft_baseline",
     "filtered_rollouts": "models/mve/filtered_rollouts",
     "harness_zero": "models/sft/harness_zero",
+    "harness_zero_grpo": "models/rlvr/harness_zero_grpo",
     "rlvr_skyrl": "models/rlvr/skyrl_agent",
 }
 
@@ -560,7 +561,7 @@ def main() -> None:
         "--model-variant",
         type=str,
         default="harness_zero",
-        choices=["base", "sft_baseline", "filtered_rollouts", "harness_zero", "rlvr_skyrl"],
+        choices=list(MODEL_PATHS.keys()),
         help="Model variant for the model card (default: harness_zero).",
     )
     parser.add_argument(
