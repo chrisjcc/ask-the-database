@@ -404,6 +404,8 @@ class TrajectoryVerifierSelector:
 
         surviving = [c for c in candidates if c.is_executable]
         discarded_count = len(candidates) - len(surviving)
+        if not surviving:
+            surviving = candidates
 
         # 2. Score trajectories
         scored_candidates: list[tuple[TrajectoryCandidate, TrajectoryScore]] = []
