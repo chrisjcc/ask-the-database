@@ -118,7 +118,7 @@ class TrapScorer:
         r"\bTOP\s+\d+",
         r"\bLEN\s*\(",
         r"\bCONCAT\s*\(",
-        r"\bIF\s*\(",
+        r"\bIFF?\s*\(",
         r"=\s*['\"](?:true|false)['\"]",
         r"\bIS\s+TRUE\b",
         r"\bIS\s+FALSE\b",
