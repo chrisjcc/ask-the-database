@@ -122,12 +122,14 @@ class DuckDBToSQLiteConverter:
         source_path: str | Path,
         target_path: str | Path,
         verify_parity: bool = True,
+        db_id: str | None = None,
     ) -> ConversionReport:
         """Convert a single DuckDB database file into a SQLite database with row-count parity check."""
         t_start = time.perf_counter()
         src = Path(source_path).resolve()
         tgt = Path(target_path).resolve()
-        db_id = src.stem
+        if db_id is None:
+            db_id = src.stem
 
         report = ConversionReport(
             database_id=db_id,
@@ -179,21 +181,32 @@ class DuckDBToSQLiteConverter:
 
                 col_defs: list[str] = []
                 col_names: list[str] = []
+                select_exprs: list[str] = []
                 for col_name, data_type in col_info:
+                    c_esc = col_name.replace('"', '""')
                     sqlite_type = self.map_duckdb_type_to_sqlite(str(data_type))
-                    col_defs.append(f'"{col_name}" {sqlite_type}')
+                    col_defs.append(f'"{c_esc}" {sqlite_type}')
                     col_names.append(col_name)
 
+                    dt_upper = str(data_type).upper()
+                    # Handle timestamp with timezone without requiring Python pytz runtime import
+                    if "WITH TIME ZONE" in dt_upper or dt_upper.endswith("TZ"):
+                        select_exprs.append(f'CAST("{c_esc}" AS VARCHAR) AS "{c_esc}"')
+                    else:
+                        select_exprs.append(f'"{c_esc}"')
+
                 # 2. Create table in SQLite
+                t_esc = tbl.replace('"', '""')
                 cols_sql = ", ".join(col_defs)
-                create_stmt = f'CREATE TABLE "{tbl}" ({cols_sql});'
+                create_stmt = f'CREATE TABLE "{t_esc}" ({cols_sql});'
                 sql_conn.execute(create_stmt)
 
                 # 3. Stream data from DuckDB to SQLite
                 cur = duck_conn.cursor()
-                cur.execute(f'SELECT * FROM "{tbl}";')
+                select_sql = f'SELECT {", ".join(select_exprs)} FROM "{t_esc}";'
+                cur.execute(select_sql)
                 placeholders = ", ".join(["?"] * len(col_names))
-                insert_stmt = f'INSERT INTO "{tbl}" VALUES ({placeholders});'
+                insert_stmt = f'INSERT INTO "{t_esc}" VALUES ({placeholders});'
 
                 table_rows_count = 0
                 while True:
@@ -270,11 +283,19 @@ class DuckDBToSQLiteConverter:
 
         reports: list[ConversionReport] = []
         for duck_file in duckdb_files:
-            target_sqlite = tgt_path / duck_file.stem / f"{duck_file.stem}.sqlite"
+            rel_path = duck_file.relative_to(src_path)
+            if rel_path.parent == Path("."):
+                target_sqlite = tgt_path / duck_file.stem / f"{duck_file.stem}.sqlite"
+                database_id = duck_file.stem
+            else:
+                target_sqlite = tgt_path / rel_path.parent / f"{duck_file.stem}.sqlite"
+                database_id = str(rel_path.with_suffix(""))
+
             rep = self.convert_database(
                 source_path=duck_file,
                 target_path=target_sqlite,
                 verify_parity=verify_parity,
+                db_id=database_id,
             )
             reports.append(rep)
 

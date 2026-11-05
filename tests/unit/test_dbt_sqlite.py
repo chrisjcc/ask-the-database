@@ -213,3 +213,72 @@ def test_convert_cli_script(tmp_path: Path) -> None:
     assert data["total_discovered"] == 1
     assert data["total_successful"] == 1
     assert data["total_failed"] == 0
+
+
+def test_timestamptz_conversion_hermetic(tmp_path: Path) -> None:
+    """Verify conversion of TIMESTAMPTZ columns works hermetically without pytz runtime error."""
+    source_db = tmp_path / "tz_test.duckdb"
+    target_sql = tmp_path / "tz_test.sqlite"
+
+    con = duckdb.connect(str(source_db))
+    con.execute("CREATE TABLE events (event_id INT, occurred_at TIMESTAMPTZ);")
+    con.execute(
+        "INSERT INTO events VALUES (1, '2024-03-01 15:30:00+00'), (2, '2024-06-15 08:45:00+02');"
+    )
+    con.close()
+
+    converter = DuckDBToSQLiteConverter()
+    report = converter.convert_database(source_db, target_sql, verify_parity=True)
+
+    assert report.error is None
+    assert report.all_tables_verified is True
+    assert report.total_rows == 2
+
+    # Check SQLite contents
+    sql_conn = sqlite3.connect(str(target_sql))
+    rows = sql_conn.execute(
+        "SELECT event_id, occurred_at FROM events ORDER BY event_id;"
+    ).fetchall()
+    assert len(rows) == 2
+    assert rows[0][0] == 1
+    assert "2024-03-01" in str(rows[0][1])
+    sql_conn.close()
+
+
+def test_nested_hierarchy_conversion(tmp_path: Path) -> None:
+    """Verify nested task directories (e.g. analytics001/solution/gold.duckdb) do not collide."""
+    source_root = tmp_path / "source_root"
+    target_root = tmp_path / "target_root"
+
+    task1_dir = source_root / "task_01" / "solution"
+    task2_dir = source_root / "task_02" / "solution"
+    task1_dir.mkdir(parents=True)
+    task2_dir.mkdir(parents=True)
+
+    # Both named gold.duckdb
+    for d, val in [(task1_dir, "t1_data"), (task2_dir, "t2_data")]:
+        db_file = d / "gold.duckdb"
+        con = duckdb.connect(str(db_file))
+        con.execute("CREATE TABLE payload (info VARCHAR);")
+        con.execute(f"INSERT INTO payload VALUES ('{val}');")
+        con.close()
+
+    converter = DuckDBToSQLiteConverter()
+    reports = converter.convert_directory(source_root, target_root, verify_parity=True)
+
+    assert len(reports) == 2
+    assert all(r.all_tables_verified for r in reports)
+
+    out1 = target_root / "task_01" / "solution" / "gold.sqlite"
+    out2 = target_root / "task_02" / "solution" / "gold.sqlite"
+
+    assert out1.exists()
+    assert out2.exists()
+
+    c1 = sqlite3.connect(str(out1))
+    assert c1.execute("SELECT info FROM payload;").fetchone()[0] == "t1_data"
+    c1.close()
+
+    c2 = sqlite3.connect(str(out2))
+    assert c2.execute("SELECT info FROM payload;").fetchone()[0] == "t2_data"
+    c2.close()
