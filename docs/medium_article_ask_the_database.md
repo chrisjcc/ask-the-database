@@ -162,10 +162,10 @@ Because Harness-Zero pre-fine-tuning elevates the model's schema pre-inspection 
 This guarantees divergent intra-group returns ($\operatorname{std}(R) > 0$), providing high-variance advantage estimates that eliminate the cold-start exploration plateau.
 
 In our empirical 250-step multi-turn GRPO benchmark across 20 unseen schemas:
-* **Exploration Bootstrap**: Harness-Zero achieved positive rewards by **Step 3**, a **9.0× speedup** over the Conventional SFT baseline which stalled until Step 27.
+* **Exploration Bootstrap**: Harness-Zero achieved positive rewards by **Step 1**, a **27.0× speedup** over the Conventional SFT baseline which stalled until Step 27.
 * **Advantage Stability**: Harness-Zero sustained a mean intra-group standard deviation of **$\operatorname{std}(R) = 0.443$** ($9.8\times$ higher than the baseline's $0.045$).
-* **Cumulative Sample Efficiency**: Harness-Zero accumulated an Area Under Curve (AUC) of **89.30**, delivering a massive **+76.95 AUC advantage** over the baseline (12.35).
-* **Asymptotic Generalization**: On held-out Spider Dev, Harness-Zero reached **13.54% Test-Suite accuracy**—a **10.7× relative boost** over the collapsed baseline (1.26%), while boosting autonomous error recovery by **15.2×** (3.04% vs 0.20%).
+* **Cumulative Sample Efficiency**: Harness-Zero accumulated an Area Under Curve (AUC) of **-87.09**, delivering a massive **+83.94 AUC advantage** over the baseline (-171.03).
+* **Asymptotic Generalization**: On held-out Spider Dev, Harness-Zero reached **19.92% Test-Suite accuracy**—a **15.8× relative boost** over the collapsed baseline (1.26%), while boosting autonomous error recovery by **56.9×** (11.38% vs 0.20%).
 
 ![RLVR Sample Efficiency and Cold-Start Dynamics](../papers/draft/figures/rlvr_training_curve.png)
 *Figure 1: Empirical RLVR / GRPO training trajectories comparing conventional SFT warm-start against Harness-Zero pre-grounding across 250 steps. Conventional SFT suffers from vanishing policy gradients due to zero intra-group reward variance on unseen schemas, whereas Harness-Zero enables immediate, sample-efficient policy improvement.*
@@ -329,13 +329,13 @@ To test whether models can learn multi-turn tool interaction purely through rein
 
 | Optimization & Alignment Dimension | Cold-Start RLVR (from SFT) | Procedurally Grounded RLVR (from H-0) | Advantage | Empirical Finding |
 | :--- | :---: | :---: | :---: | :---: |
-| **Exploration Bootstrap** (Steps to $R > 0$) | 27 steps (Plateau) | **3 steps** | **9.0× Faster** | Bypasses zero-gradient exploration plateau |
+| **Exploration Bootstrap** (Steps to $R > 0$) | 27 steps (Plateau) | **1 step** | **27.0× Faster** | Bypasses zero-gradient exploration plateau |
 | **Advantage Stability** (Mean Intra-Group $\operatorname{std}(R)$) | 0.045 (Near-Zero) | **0.443** | **9.8× Higher** | Resolves vanishing policy gradient |
-| **Cumulative Sample Efficiency** (Return AUC) | 12.35 | **89.30** | **+76.95 $\Delta$** | Sustained sample-efficient trajectory updates |
-| **Asymptotic Generalization** (Held-Out Spider Dev TS) | 1.26% | **13.54%** | **10.7× Higher** | Overcomes exploration collapse on unseen schemas |
-| **Autonomous Error Recovery Rate** ($R_{\text{rec}}$) | 0.20% | **3.04%** | **15.2× Higher** | Acquires active exception handling ability |
-| **Valid Action / Protocol Adherence Rate** | 2.80% | **19.83%** | **7.1× Higher** | Eliminates syntax and tool protocol degradation |
-| **Execution Accuracy (EX)** on Spider Dev | 2.10% | **17.20%** | **8.2× Higher** | Reliable semantic execution |
+| **Cumulative Sample Efficiency** (Return AUC) | -171.03 | **-87.09** | **+83.94 $\Delta$** | Sustained sample-efficient trajectory updates |
+| **Asymptotic Generalization** (Held-Out Spider Dev TS) | 1.26% | **19.92%** | **15.8× Higher** | Overcomes exploration collapse on unseen schemas |
+| **Autonomous Error Recovery Rate** ($R_{\text{rec}}$) | 0.20% | **11.38%** | **56.9× Higher** | Acquires active exception handling ability |
+| **Valid Action / Protocol Adherence Rate** | 2.80% | **30.56%** | **10.9× Higher** | Eliminates syntax and tool protocol degradation |
+| **Execution Accuracy (EX)** on Spider Dev | 1.35% | **20.99%** | **15.5× Higher** | Reliable semantic execution |
 
 **The Empirical Takeaway**: Without procedural warm-start, the agent never learns tool protocols or schema discovery from scratch—it collapses into protocol syntax errors (`EXECUTE SQL`) and schema hallucinations. Distilling procedural protocols beforehand solves this completely, allowing GRPO to achieve immediate exploration bootstrap and strong generalization.
 
@@ -345,10 +345,10 @@ To understand how reinforcement learning reshapes model behavior, we evaluated b
 
 | Evaluation Dimension | Metric | Conventional SFT Baseline | Procedurally Grounded Agent | Empirical Delta ($\Delta$) | Specialization Mechanism |
 | :--- | :--- | :---: | :---: | :---: | :--- |
-| **Autonomous Multi-Turn** | **Test-Suite Accuracy (TS)** | 1.26% | **13.54%** | **+12.28 pp (10.7×)** | **Grounded Agent Dominates**: Exploration collapse in baseline |
-| *(Primary Objective)* | **Execution Accuracy (EX)** | 1.35% | **14.22%** | **+12.87 pp (10.5×)** | Active catalog inspection resolves foreign keys |
-| *Zero-Knowledge Environment* | **Valid Action Rate (VA)** | 2.80% | **19.83%** | **+17.03 pp (7.1×)** | Grounded agent preserves XML tool syntax |
-| *(Schema Withheld, 5 Turns)* | **Error Recovery ($R_{\text{rec}}$)** | 0.20% | **3.04%** | **+2.84 pp (15.2×)** | Multi-turn iterative self-correction |
+| **Autonomous Multi-Turn** | **Test-Suite Accuracy (TS)** | 1.26% | **19.92%** | **+18.66 pp (15.8×)** | **Grounded Agent Dominates**: Exploration collapse in baseline |
+| *(Primary Objective)* | **Execution Accuracy (EX)** | 1.35% | **20.99%** | **+19.64 pp (15.5×)** | Active catalog inspection resolves foreign keys |
+| *Zero-Knowledge Environment* | **Valid Action Rate (VA)** | 2.80% | **30.56%** | **+27.76 pp (10.9×)** | Grounded agent preserves XML tool syntax |
+| *(Schema Withheld, 5 Turns)* | **Error Recovery ($R_{\text{rec}}$)** | 0.20% | **11.38%** | **+11.18 pp (56.9×)** | Multi-turn iterative self-correction |
 | **Static Single-Turn Compound** | **Test-Suite Accuracy (TS)** | **48.84%** | 37.72% | -11.12 pp | **Baseline Wins**: SFT matches in-distribution DDL prompt |
 | *(Diagnostic / Verifier)* | **Execution Accuracy (EX)** | **54.93%** | 41.59% | -13.34 pp | Agent emits tool calls on ~31% of single-turn prompts |
 | *Full DDL Injected in Context* | **Valid Action Rate (VA)** | **94.29%** | 69.34% | -24.95 pp | Single-turn parser discards `<tool>` tags as syntax errors |

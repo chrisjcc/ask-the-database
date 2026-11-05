@@ -22,24 +22,24 @@
     "directory": "models/rlvr/harness_zero_grpo",
     "efficiency": {
       "total_steps": 250,
-      "steps_to_milestone": 3,
-      "reward_step_25": 0.6,
-      "reward_step_50": -0.525,
-      "reward_step_100": -0.675,
-      "final_reward": -0.6,
-      "area_under_curve": -94.075
+      "steps_to_milestone": 1,
+      "reward_step_25": -0.1125,
+      "reward_step_50": -0.325,
+      "reward_step_100": -0.6375,
+      "final_reward": -0.65,
+      "area_under_curve": -87.0875
     },
     "evaluation": {
-      "ts": 13.54,
-      "ex": 14.22,
-      "mrr": 3.04
+      "ts": 19.92,
+      "ex": 20.99,
+      "mrr": 11.38
     }
   },
   "comparison": {
-    "delta_test_suite_accuracy": 12.28,
-    "delta_auc_cumulative_reward": 76.95,
+    "delta_test_suite_accuracy": 18.66,
+    "delta_auc_cumulative_reward": 83.94,
     "run_a_steps_to_positive": 27,
-    "run_b_steps_to_positive": 3,
-    "speedup_milestone": "9.0x"
+    "run_b_steps_to_positive": 1,
+    "speedup_milestone": "27.0x"
   }
 }

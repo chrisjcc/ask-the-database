@@ -12,3 +12,11 @@ hydra-core>=1.3.2
 omegaconf>=2.3.0
 python-dotenv>=1.0.1
 tqdm>=4.66.0
+
+# Neural Model Inference
+torch>=2.2.0
+transformers>=4.40.0
+peft>=0.10.0
+accelerate>=0.28.0
+bitsandbytes>=0.43.0
+

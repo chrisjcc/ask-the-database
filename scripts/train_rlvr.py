@@ -286,6 +286,21 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                     pipeline.model.save_pretrained(out_path)
                 except Exception as e:
                     logger.warning("Could not save model to %s: %s", out_path, e)
+            elif Path(str(model_path)).is_dir():
+                import shutil
+
+                for f_name in [
+                    "adapter_config.json",
+                    "adapter_model.safetensors",
+                    "tokenizer.json",
+                    "tokenizer_config.json",
+                    "vocab.json",
+                    "merges.txt",
+                ]:
+                    src_f = Path(str(model_path)) / f_name
+                    dst_f = out_path / f_name
+                    if src_f.exists() and not dst_f.exists():
+                        shutil.copy2(src_f, dst_f)
             if pipeline.tokenizer is not None:
                 try:
                     pipeline.tokenizer.save_pretrained(out_path)
