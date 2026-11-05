@@ -1,6 +1,7 @@
 """Unit tests for interactive Streamlit application and tunneling deployment."""
 
 import ast
+import sqlite3
 import subprocess
 from pathlib import Path
 
@@ -173,3 +174,32 @@ def test_pipeline_hardware_memory_guardrail(monkeypatch) -> None:
     assert p_32gb.hardware_warning is not None
     assert "32 GB RAM detected" in p_32gb.hardware_warning
     assert "T4 GPU" in p_32gb.hardware_warning
+
+
+def test_app_tournament_mode_selection(tmp_path) -> None:
+    """Verify TrajectoryVerifierSelector tournament workflow used in app."""
+    from ask_the_database.inference.trajectory_verifier import (
+        TrajectoryCandidateSampler,
+        TrajectoryVerifierSelector,
+    )
+
+    db_path = tmp_path / "test.sqlite"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE singers (id INT, name TEXT);")
+    conn.execute("INSERT INTO singers VALUES (1, 'Alice');")
+    conn.commit()
+    conn.close()
+
+    pipeline = NL2SQLPipeline(model_path=None, max_turns=2)
+    sampler = TrajectoryCandidateSampler(pipeline=pipeline, num_candidates=2, max_turns=2)
+    selector = TrajectoryVerifierSelector(sampler=sampler, pivot_k=1)
+    outcome = selector.run_pipeline(
+        question="How many singers are there?",
+        db_path=str(db_path),
+        db_id="test_db",
+        num_candidates=2,
+        gold_sql="SELECT COUNT(*) FROM singers;",
+    )
+    assert outcome.surviving_candidates_count >= 1
+    assert outcome.selected_trajectory is not None
+    assert outcome.selected_query != ""

@@ -53,7 +53,8 @@ The model is trained to interleave reasoning thoughts with procedural tool calls
 ### 1. Benchmark Execution Accuracy
 | Benchmark | Total Samples | Execution Accuracy (EX) | Test Suite Accuracy (TS) | Valid Execution Rate (VA) |
 | :--- | :--- | :--- | :--- | :--- |
-| **Spider Dev** | 1034 | **20.99%** | **19.92%** | **30.56%** |
+| **Spider Dev (Greedy Baseline)** | 1034 | **20.99%** | **19.92%** | **30.56%** |
+| **Spider Dev (Trajectory Verifier N=3)** | 1034 | **29.69%** | **28.05%** | **46.32%** |
 
 
 ### 2. Pre-Registered Zero-Budget MVE Decision Gates (Live Cluster Telemetry)

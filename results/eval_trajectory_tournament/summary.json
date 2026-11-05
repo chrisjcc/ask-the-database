@@ -1,0 +1,9 @@
+{
+  "spider": {
+    "total_samples": 1034,
+    "test_suite_accuracy_ts": 28.05,
+    "execution_accuracy_ex": 29.69,
+    "valid_execution_rate_va": 46.32,
+    "recovery_rate_mrr": 21.05
+  }
+}

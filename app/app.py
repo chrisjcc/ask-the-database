@@ -11,6 +11,10 @@ import streamlit as st
 from ask_the_database.environment.schema_manager import SchemaManager
 from ask_the_database.environment.sqlite_env import SQLiteEnvironment
 from ask_the_database.inference.pipeline import NL2SQLPipeline
+from ask_the_database.inference.trajectory_verifier import (
+    TrajectoryCandidateSampler,
+    TrajectoryVerifierSelector,
+)
 
 SAMPLE_QUESTIONS: dict[str, list[str]] = {
     "concert_singer": [
@@ -170,6 +174,19 @@ def main() -> None:
     )
     model_path = st.sidebar.text_input("Checkpoint Path or HF Hub Repo:", value=default_model)
     max_turns = st.sidebar.slider("Max Interaction Turns:", min_value=1, max_value=10, value=5)
+    num_candidates = st.sidebar.slider(
+        "Trajectory Candidates (N):",
+        min_value=1,
+        max_value=5,
+        value=1,
+        help="Number of independent exploration trajectories to sample. N=1 is fast single-rollout; N>1 activates the Multi-Turn Trajectory Verifier tournament.",
+    )
+    if num_candidates > 1:
+        st.sidebar.info(
+            f"ℹ️ **Trajectory Tournament Active (N={num_candidates})**\n\n"
+            f"The agent will sample {num_candidates} independent exploration paths with temperature T=0.7, "
+            "discard unexecutable attempts, and use the Trajectory Verifier to select the consensus winner."
+        )
 
     pipeline = get_pipeline(model_path, max_turns)
     if pipeline.is_model_loaded:
@@ -228,6 +245,26 @@ def main() -> None:
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
+            if msg.get("tournament"):
+                t_info = msg["tournament"]
+                with st.expander(
+                    f"🏆 Trajectory Tournament Results (N={t_info['num_candidates']})",
+                    expanded=False,
+                ):
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("Sampled Paths", t_info["num_candidates"])
+                    col2.metric("Executable", t_info["surviving"])
+                    col3.metric("Discarded", t_info["discarded"])
+                    col4.metric("Verifier Latency", f"{t_info['latency_ms']:.1f} ms")
+                    st.markdown(
+                        f"**Winning Trajectory:** `{t_info['winner_id']}` (Score: `{t_info['score']:.2f}`)"
+                    )
+                    for c_info in t_info.get("ranked_candidates", []):
+                        is_winner = c_info["id"] == t_info["winner_id"]
+                        badge = "🥇 **WINNER**" if is_winner else f"• `{c_info['id']}`"
+                        st.markdown(
+                            f"{badge}: Score **`{c_info['score']:.2f}`**\n```sql\n{c_info['sql']}\n```"
+                        )
             if msg.get("steps"):
                 with st.expander("Agent Thought Process & Exploration Steps", expanded=False):
                     for step in msg["steps"]:
@@ -268,33 +305,120 @@ def main() -> None:
 
         pipeline = get_pipeline(model_path, max_turns)
         with st.chat_message("assistant"):
-            with st.status("Agent exploring database...", expanded=True) as status:
-                traj = pipeline.run_interactive(
-                    question=prompt,
-                    db_path=str(db_path),
-                    db_id=selected_db,
-                    max_turns=max_turns,
-                )
-                serialized_steps = []
-                for step in traj.steps:
-                    st.write(f"**Turn {step.turn}:** `{step.action}`")
-                    is_sql = "SELECT" in str(step.output).upper()
-                    st.code(step.output, language="sql" if is_sql else "text")
-                    serialized_steps.append(
-                        {
-                            "turn": step.turn,
-                            "action": step.action,
-                            "action_input": step.action_input,
-                            "output": step.output,
-                        }
+            tournament_info = None
+
+            if num_candidates > 1:
+                with st.status(
+                    f"Running Trajectory Tournament ({num_candidates} exploration paths)...",
+                    expanded=True,
+                ) as status:
+                    sampler = TrajectoryCandidateSampler(
+                        pipeline=pipeline,
+                        num_candidates=num_candidates,
+                        max_turns=max_turns,
+                        temperature=0.7,
                     )
-                status.update(label="Exploration complete!", state="complete")
+                    selector = TrajectoryVerifierSelector(
+                        sampler=sampler, pivot_k=min(2, num_candidates)
+                    )
+                    outcome = selector.run_pipeline(
+                        question=prompt,
+                        db_path=str(db_path),
+                        db_id=selected_db,
+                        num_candidates=num_candidates,
+                    )
+                    traj = outcome.selected_trajectory
+                    serialized_steps = []
+                    for step in traj.steps:
+                        st.write(f"**Turn {step.turn}:** `{step.action}`")
+                        is_sql = "SELECT" in str(step.output).upper()
+                        st.code(step.output, language="sql" if is_sql else "text")
+                        serialized_steps.append(
+                            {
+                                "turn": step.turn,
+                                "action": step.action,
+                                "action_input": step.action_input,
+                                "output": step.output,
+                            }
+                        )
+                    status.update(
+                        label=(
+                            f"Tournament complete! Winner: {outcome.selected_candidate_id} "
+                            f"(Score: {outcome.selected_score.overall_score:.2f}, "
+                            f"{outcome.surviving_candidates_count}/{num_candidates} valid)"
+                        ),
+                        state="complete",
+                    )
+                tournament_info = {
+                    "num_candidates": num_candidates,
+                    "surviving": outcome.surviving_candidates_count,
+                    "discarded": outcome.discarded_candidates_count,
+                    "latency_ms": outcome.verification_latency_ms,
+                    "winner_id": outcome.selected_candidate_id,
+                    "score": outcome.selected_score.overall_score,
+                    "ranked_candidates": [
+                        {
+                            "id": s.candidate_id,
+                            "score": s.overall_score,
+                            "sql": s.final_sql,
+                            "recovery": s.had_error_recovery,
+                        }
+                        for s in outcome.all_ranked_scores
+                    ],
+                }
+            else:
+                with st.status("Agent exploring database...", expanded=True) as status:
+                    traj = pipeline.run_interactive(
+                        question=prompt,
+                        db_path=str(db_path),
+                        db_id=selected_db,
+                        max_turns=max_turns,
+                    )
+                    serialized_steps = []
+                    for step in traj.steps:
+                        st.write(f"**Turn {step.turn}:** `{step.action}`")
+                        is_sql = "SELECT" in str(step.output).upper()
+                        st.code(step.output, language="sql" if is_sql else "text")
+                        serialized_steps.append(
+                            {
+                                "turn": step.turn,
+                                "action": step.action,
+                                "action_input": step.action_input,
+                                "output": step.output,
+                            }
+                        )
+                    status.update(label="Exploration complete!", state="complete")
 
             if not pipeline.is_model_loaded:
                 st.caption(
                     "⚠️ *Executed via deterministic heuristic fallback (no neural weights loaded at checkpoint path).* "
                     "For neural text-to-SQL inference, load a fine-tuned model checkpoint."
                 )
+
+            # Show tournament diagnostics if tournament mode was active
+            if tournament_info:
+                with st.expander(
+                    f"🏆 **Trajectory Tournament Results (N={tournament_info['num_candidates']})**",
+                    expanded=True,
+                ):
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("Sampled Paths", tournament_info["num_candidates"])
+                    col2.metric("Executable", tournament_info["surviving"])
+                    col3.metric("Discarded (Errors)", tournament_info["discarded"])
+                    col4.metric("Verifier Latency", f"{tournament_info['latency_ms']:.1f} ms")
+
+                    st.markdown(
+                        f"**Winning Trajectory:** `{tournament_info['winner_id']}` — "
+                        f"Overall Score: **`{tournament_info['score']:.2f}`**"
+                    )
+                    st.markdown("##### Candidate Trajectory Breakdown:")
+                    for c_info in tournament_info["ranked_candidates"]:
+                        is_winner = c_info["id"] == tournament_info["winner_id"]
+                        badge = "🥇 **WINNER**" if is_winner else f"• `{c_info['id']}`"
+                        recov_tag = " | *Self-Corrected Error* 🔄" if c_info["recovery"] else ""
+                        st.markdown(
+                            f"{badge}: Score **`{c_info['score']:.2f}`**{recov_tag}\n```sql\n{c_info['sql']}\n```"
+                        )
 
             st.markdown(f"### Final SQL Query:\n```sql\n{traj.final_query}\n```")
 
@@ -316,6 +440,7 @@ def main() -> None:
                 "role": "assistant",
                 "content": f"Resolved query for: **{prompt}**",
                 "steps": serialized_steps,
+                "tournament": tournament_info,
                 "query": traj.final_query,
                 "data": result_data,
                 "columns": result_columns,
