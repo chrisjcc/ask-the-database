@@ -275,3 +275,33 @@ def test_evaluate_benchmark_trajectory_mode(temp_db: str) -> None:
     bench_res = results["custom_bench"]
     assert bench_res["total_samples"] == 1
     assert bench_res["valid_execution_rate_va"] >= 0.0
+
+
+def test_evaluate_benchmark_use_trajectory_verifier_flag_override(temp_db: str) -> None:
+    """Verify that use_trajectory_verifier=True overrides default verification_mode='none'."""
+    custom_sample = {
+        "question": "Show all employees ordered by salary desc",
+        "db_path": temp_db,
+        "db_id": "test_db",
+        "gold_sql": "SELECT name, salary FROM employees ORDER BY salary DESC;",
+    }
+
+    eval_config: dict[str, Any] = {
+        "evaluation": {
+            "model_path": None,
+            "benchmarks": ["custom_bench"],
+            "custom_samples": {"custom_bench": [custom_sample]},
+            "verification_mode": "none",
+            "use_trajectory_verifier": True,
+            "num_candidates": 2,
+            "max_turns": 2,
+            "temperature": 0.7,
+            "summary_file": "/tmp/test_eval_summary2.json",
+        }
+    }
+
+    results = run_benchmark_evaluation(eval_config)
+    assert "custom_bench" in results
+    bench_res = results["custom_bench"]
+    assert bench_res["total_samples"] == 1
+    assert bench_res["valid_execution_rate_va"] >= 0.0

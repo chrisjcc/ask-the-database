@@ -51,12 +51,15 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
 
     use_verifier = bool(evaluation_section.get("use_verifier", False))
     use_trajectory_verifier = bool(evaluation_section.get("use_trajectory_verifier", False))
-    verification_mode = str(
-        evaluation_section.get(
-            "verification_mode",
-            "trajectory" if use_trajectory_verifier else ("query" if use_verifier else "none"),
-        )
-    ).lower()
+    raw_mode = evaluation_section.get("verification_mode")
+    if use_trajectory_verifier:
+        verification_mode = "trajectory"
+    elif use_verifier:
+        verification_mode = "query"
+    elif raw_mode:
+        verification_mode = str(raw_mode).lower()
+    else:
+        verification_mode = "none"
     num_candidates = int(evaluation_section.get("num_candidates", 5))
     temperature = float(evaluation_section.get("temperature", 0.7))
 
