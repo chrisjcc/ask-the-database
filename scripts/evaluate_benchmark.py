@@ -13,6 +13,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
+from ask_the_database.environment.base import ExecutionResult
 from ask_the_database.environment.sqlite_env import SQLiteEnvironment
 from ask_the_database.environment.test_suite_evaluator import TestSuiteEvaluator
 from ask_the_database.inference.candidate_sampler import CandidateSampler
@@ -211,19 +212,57 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
                 valid_count += 1
 
             # 2. Execution accuracy (EX)
+            gold_csv_paths = s.get("gold_csv_paths") or (
+                [s["gold_csv_path"]] if s.get("gold_csv_path") else []
+            )
             db_env = SQLiteEnvironment(db_path)
-            res_gold = db_env.execute(gold_sql)
-            ex_res = ex_evaluator.compare(final_exec_res, res_gold)
-            if ex_res.is_equivalent:
+            passed_ex = False
+
+            if gold_csv_paths:
+                try:
+                    import pandas as pd
+
+                    for csv_p in gold_csv_paths:
+                        if Path(csv_p).exists():
+                            gold_df = pd.read_csv(csv_p)
+                            gold_tuples = [tuple(r) for r in gold_df.to_numpy()]
+                            res_gold = ExecutionResult(
+                                success=True,
+                                data=gold_tuples,
+                                columns=list(gold_df.columns),
+                                row_count=len(gold_tuples),
+                                execution_time_ms=0.0,
+                                error_message=None,
+                                error_type=None,
+                            )
+                            ex_res = ex_evaluator.compare(final_exec_res, res_gold)
+                            if ex_res.is_equivalent:
+                                passed_ex = True
+                                break
+                except Exception as e:
+                    logger.warning(
+                        "Error reading gold CSVs for instance '%s': %s", s.get("instance_id"), e
+                    )
+            else:
+                res_gold = db_env.execute(gold_sql)
+                ex_res = ex_evaluator.compare(final_exec_res, res_gold)
+                passed_ex = ex_res.is_equivalent
+
+            if passed_ex:
                 ex_passed += 1
 
             # 3. Test-suite accuracy (TS)
-            ts_res = ts_evaluator.evaluate_test_suite(db_path, final_sql, gold_sql)
-            if ts_res.passed_all_suites:
+            if gold_sql and gold_sql != "SELECT 1;":
+                ts_res = ts_evaluator.evaluate_test_suite(db_path, final_sql, gold_sql)
+                passed_ts = ts_res.passed_all_suites
+            else:
+                passed_ts = ex_res.is_equivalent
+
+            if passed_ts:
                 ts_passed += 1
 
             # 4. Multi-turn recovery rate (MRR)
-            if had_recovery and ts_res.passed_all_suites:
+            if had_recovery and passed_ts:
                 recoveries += 1
 
         leaderboard[bench] = {

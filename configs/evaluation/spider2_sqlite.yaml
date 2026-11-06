@@ -1,0 +1,19 @@
+model_path: "models/rlvr/harness_zero_grpo"
+benchmarks:
+  - "spider2_sqlite"
+max_samples: null
+max_turns: 5
+output_dir: "results/eval_spider2_sqlite"
+summary_file: "results/eval_spider2_sqlite/summary.json"
+metrics:
+  - ts
+  - ex
+  - va
+  - mrr
+# Verification settings:
+# verification_mode options: "none", "query" (single-turn SQL ranker), "trajectory" (multi-turn trajectory verifier)
+verification_mode: "trajectory"
+use_verifier: false
+use_trajectory_verifier: true
+num_candidates: 3
+temperature: 0.7
