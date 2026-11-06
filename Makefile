@@ -235,7 +235,7 @@ evaluate:
 	$(PYTHON) scripts/evaluate_benchmark.py $(ARGS)
 
 evaluate-spider2:
-	$(PYTHON) scripts/evaluate_benchmark.py --config-name spider2_sqlite $(ARGS)
+	$(PYTHON) scripts/evaluate_benchmark.py evaluation=spider2_sqlite $(ARGS)
 
 test-spider2-eval:
 	$(PYTHON) -m pytest tests/unit/test_spider2_eval.py $(ARGS)
