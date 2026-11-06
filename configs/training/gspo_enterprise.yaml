@@ -10,7 +10,23 @@ dapo_clip_low: 0.20
 dapo_clip_high: 0.28
 gspo_seq_epsilon: 3.0e-4
 
+# --- Paths & Seed Policy ---
+model_path: "models/rlvr/harness_zero_grpo"
 output_dir: "models/rlvr/gspo_enterprise/final"
+
+# --- Agent Rollouts & Interaction ---
+num_rollouts_per_prompt: 4
+max_turns: 5
+temperature: 0.7
+dry_run: false
+step_penalty: -0.05
+recovery_bonus: 0.3
+save_steps: 50
+
+# --- Tracking & Observability ---
+wandb:
+  enabled: false
+  project: "ask-the-database"
 
 # --- Batching & Steps ---
 per_device_train_batch_size: 1
