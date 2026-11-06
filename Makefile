@@ -133,6 +133,9 @@ convert-spider2-dbt:
 test-spider2-dbt:
 	$(PYTHON) -m pytest tests/unit/test_dbt_sqlite.py $(ARGS)
 
+prepare-spider2-sqlite:
+	$(PYTHON) scripts/prepare_spider2_sqlite.py $(ARGS)
+
 dvc-repro:
 	$(DVC) repro $(ARGS)
 
@@ -227,6 +230,12 @@ evaluate-zero-budget-mve:
 
 evaluate:
 	$(PYTHON) scripts/evaluate_benchmark.py $(ARGS)
+
+evaluate-spider2:
+	$(PYTHON) scripts/evaluate_benchmark.py --config-name spider2_sqlite $(ARGS)
+
+test-spider2-eval:
+	$(PYTHON) -m pytest tests/unit/test_spider2_eval.py $(ARGS)
 
 evaluate-mve:
 	$(PYTHON) scripts/run_mve_evaluation.py $(ARGS)
