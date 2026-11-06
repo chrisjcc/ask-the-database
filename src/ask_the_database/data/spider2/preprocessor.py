@@ -2,6 +2,8 @@
 
 import json
 import logging
+import os
+import re
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -19,6 +21,19 @@ def fetch_upstream_jsonl(target_path: Path) -> None:
     logger.info("Downloading spider2-lite.jsonl from %s...", SPIDER2_LITE_UPSTREAM_URL)
     urllib.request.urlretrieve(SPIDER2_LITE_UPSTREAM_URL, target_path)
     logger.info("Saved upstream benchmark definitions to '%s'", target_path)
+
+
+def resolve_gold_paths(instance_id: str, gold_dir: Path) -> list[Path]:
+    """Find all matching gold CSV files for instance_id (e.g., local002_a.csv, local002_b.csv)."""
+    if not gold_dir.exists():
+        return []
+    base_path = gold_dir / f"{instance_id}.csv"
+    if base_path.exists():
+        return [base_path]
+
+    pattern = re.compile(rf"^{re.escape(instance_id)}(_[a-z])?\.csv$")
+    csv_files = sorted(gold_dir / f for f in os.listdir(gold_dir) if pattern.match(f))
+    return csv_files
 
 
 def resolve_db_path(db_name: str, db_dir: Path) -> Path:
@@ -60,6 +75,15 @@ class Spider2SQLitePreprocessor:
             else:
                 raise FileNotFoundError(f"Source file '{src}' does not exist: {src}")
 
+        # Check for local-map.jsonl inside db_dir
+        local_map: dict[str, str] = {}
+        map_path = self.db_dir / "local-map.jsonl"
+        if map_path.exists():
+            try:
+                local_map = json.loads(map_path.read_text(encoding="utf-8"))
+            except Exception as e:
+                logger.warning("Could not parse %s: %s", map_path, e)
+
         tasks: list[dict[str, Any]] = []
         with open(src, encoding="utf-8") as f:
             for line in f:
@@ -73,6 +97,9 @@ class Spider2SQLitePreprocessor:
                     continue
 
                 db_name = str(entry.get("db", ""))
+                if not db_name and instance_id in local_map:
+                    db_name = local_map[instance_id]
+
                 question = str(entry.get("question", "")).strip()
                 ext_knowledge = entry.get("external_knowledge")
 
@@ -82,7 +109,8 @@ class Spider2SQLitePreprocessor:
                     prompt_text = question
 
                 db_path = resolve_db_path(db_name, self.db_dir)
-                gold_csv_path = self.gold_dir / f"{instance_id}.csv"
+                gold_paths = resolve_gold_paths(instance_id, self.gold_dir)
+                gold_csv_paths = [str(p) for p in gold_paths]
 
                 tasks.append(
                     {
@@ -90,7 +118,8 @@ class Spider2SQLitePreprocessor:
                         "question": prompt_text,
                         "db_id": db_name,
                         "db_path": str(db_path),
-                        "gold_csv_path": str(gold_csv_path) if gold_csv_path.exists() else None,
+                        "gold_csv_paths": gold_csv_paths,
+                        "gold_csv_path": gold_csv_paths[0] if gold_csv_paths else None,
                         "gold_sql": "SELECT 1;",
                         "benchmark": "spider2_sqlite",
                     }

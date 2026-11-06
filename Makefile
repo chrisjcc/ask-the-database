@@ -133,6 +133,9 @@ convert-spider2-dbt:
 test-spider2-dbt:
 	$(PYTHON) -m pytest tests/unit/test_dbt_sqlite.py $(ARGS)
 
+download-spider2-lite:
+	$(PYTHON) scripts/download_spider2_lite.py $(ARGS)
+
 prepare-spider2-sqlite:
 	$(PYTHON) scripts/prepare_spider2_sqlite.py $(ARGS)
 

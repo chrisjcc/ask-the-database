@@ -212,31 +212,43 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
                 valid_count += 1
 
             # 2. Execution accuracy (EX)
-            gold_csv_path = s.get("gold_csv_path")
+            gold_csv_paths = s.get("gold_csv_paths") or (
+                [s["gold_csv_path"]] if s.get("gold_csv_path") else []
+            )
             db_env = SQLiteEnvironment(db_path)
-            if gold_csv_path and Path(gold_csv_path).exists():
+            passed_ex = False
+
+            if gold_csv_paths:
                 try:
                     import pandas as pd
 
-                    gold_df = pd.read_csv(gold_csv_path)
-                    gold_tuples = [tuple(r) for r in gold_df.to_numpy()]
-                    res_gold = ExecutionResult(
-                        success=True,
-                        data=gold_tuples,
-                        columns=list(gold_df.columns),
-                        row_count=len(gold_tuples),
-                        execution_time_ms=0.0,
-                        error_message=None,
-                        error_type=None,
-                    )
+                    for csv_p in gold_csv_paths:
+                        if Path(csv_p).exists():
+                            gold_df = pd.read_csv(csv_p)
+                            gold_tuples = [tuple(r) for r in gold_df.to_numpy()]
+                            res_gold = ExecutionResult(
+                                success=True,
+                                data=gold_tuples,
+                                columns=list(gold_df.columns),
+                                row_count=len(gold_tuples),
+                                execution_time_ms=0.0,
+                                error_message=None,
+                                error_type=None,
+                            )
+                            ex_res = ex_evaluator.compare(final_exec_res, res_gold)
+                            if ex_res.is_equivalent:
+                                passed_ex = True
+                                break
                 except Exception as e:
-                    logger.warning("Could not read gold CSV '%s': %s", gold_csv_path, e)
-                    res_gold = db_env.execute(gold_sql)
+                    logger.warning(
+                        "Error reading gold CSVs for instance '%s': %s", s.get("instance_id"), e
+                    )
             else:
                 res_gold = db_env.execute(gold_sql)
+                ex_res = ex_evaluator.compare(final_exec_res, res_gold)
+                passed_ex = ex_res.is_equivalent
 
-            ex_res = ex_evaluator.compare(final_exec_res, res_gold)
-            if ex_res.is_equivalent:
+            if passed_ex:
                 ex_passed += 1
 
             # 3. Test-suite accuracy (TS)

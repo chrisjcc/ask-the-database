@@ -155,3 +155,50 @@ def test_gold_csv_execution_equivalence(tmp_path: Path) -> None:
     )
     cmp_mismatch = evaluator.compare(mismatch_result, gold_res)
     assert cmp_mismatch.is_equivalent is False
+
+
+def test_resolve_gold_paths_and_local_map(tmp_path: Path) -> None:
+    """Verify resolution of multi-candidate gold CSVs and local-map.jsonl."""
+    from ask_the_database.data.spider2.preprocessor import (
+        Spider2SQLitePreprocessor,
+        resolve_gold_paths,
+    )
+
+    gold_dir = tmp_path / "gold"
+    gold_dir.mkdir()
+    (gold_dir / "local002_a.csv").touch()
+    (gold_dir / "local002_b.csv").touch()
+    (gold_dir / "local010.csv").touch()
+
+    # Multi-candidate resolution
+    paths_002 = resolve_gold_paths("local002", gold_dir)
+    assert len(paths_002) == 2
+    assert any("local002_a.csv" in str(p) for p in paths_002)
+    assert any("local002_b.csv" in str(p) for p in paths_002)
+
+    # Single-candidate resolution
+    paths_010 = resolve_gold_paths("local010", gold_dir)
+    assert len(paths_010) == 1
+    assert "local010.csv" in str(paths_010[0])
+
+    # local-map.jsonl support
+    db_dir = tmp_path / "dbs"
+    db_dir.mkdir()
+    (db_dir / "local-map.jsonl").write_text(
+        json.dumps({"local002": "E_commerce"}), encoding="utf-8"
+    )
+    (db_dir / "E_commerce.sqlite").touch()
+
+    tasks_file = tmp_path / "tasks.jsonl"
+    tasks_file.write_text(
+        json.dumps({"instance_id": "local002", "db": "", "question": "What is total revenue?"})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    preprocessor = Spider2SQLitePreprocessor(db_dir=db_dir, gold_dir=gold_dir)
+    tasks = preprocessor.extract_tasks(tasks_file, allow_download=False)
+    assert len(tasks) == 1
+    assert tasks[0]["db_id"] == "E_commerce"
+    assert "E_commerce.sqlite" in tasks[0]["db_path"]
+    assert len(tasks[0]["gold_csv_paths"]) == 2
