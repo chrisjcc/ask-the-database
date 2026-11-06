@@ -221,8 +221,10 @@ class DuckDBToSQLiteConverter:
                 total_db_rows += table_rows_count
 
                 # 4. Parity verification
-                duck_count = duck_conn.execute(f'SELECT COUNT(*) FROM "{tbl}";').fetchone()[0]
-                sql_count = sql_conn.execute(f'SELECT COUNT(*) FROM "{tbl}";').fetchone()[0]
+                duck_row = duck_conn.execute(f'SELECT COUNT(*) FROM "{tbl}";').fetchone()
+                sql_row = sql_conn.execute(f'SELECT COUNT(*) FROM "{tbl}";').fetchone()
+                duck_count = int(duck_row[0]) if duck_row is not None else 0
+                sql_count = int(sql_row[0]) if sql_row is not None else 0
                 is_parity = (duck_count == sql_count) if verify_parity else True
                 if not is_parity:
                     all_verified = False
