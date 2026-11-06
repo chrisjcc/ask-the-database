@@ -183,8 +183,8 @@ def compute_policy_loss(
         config = GRPOTrainingConfig()
 
     b, _ = per_token_logps.shape
-    g = group_size
-    num_groups = b // g
+    g = group_size if (group_size > 0 and b >= group_size and b % group_size == 0) else max(1, b)
+    num_groups = max(1, b // g)
 
     # 1. Group-relative Advantage Normalization & Dynamic Sampling
     rewards_grouped = rewards.view(num_groups, g)
@@ -497,15 +497,17 @@ class TRLGRPOAdapter(BaseRLAdapter):
             max_steps=cfg.max_steps,
         )
 
-    def train_step(self, batch: RolloutBatch) -> dict[str, float]:
+    def train_step(self, batch: RolloutBatch, group_size: int | None = None) -> dict[str, float]:
         """Execute reward scoring and compute telemetry metrics for the rollout batch."""
         rewards = self.compute_rewards(batch)
+        n = len(rewards)
+        default_g = self.grpo_config.num_generations
+        g = group_size or (default_g if (n >= default_g and n % default_g == 0) else max(1, n))
         advantages = compute_group_normalized_rewards(
             rewards,
-            group_size=self.grpo_config.num_generations,
+            group_size=g,
         )
 
-        n = len(rewards)
         mean_reward = sum(rewards) / n if n > 0 else 0.0
         min_reward = min(rewards) if n > 0 else 0.0
         max_reward = max(rewards) if n > 0 else 0.0
@@ -520,7 +522,7 @@ class TRLGRPOAdapter(BaseRLAdapter):
             old_per_token_logps=dummy_logps,
             completion_mask=dummy_mask,
             rewards=rewards_t,
-            group_size=self.grpo_config.num_generations,
+            group_size=g,
             config=self.grpo_config,
         )
 

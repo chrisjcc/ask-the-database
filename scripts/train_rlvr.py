@@ -10,8 +10,13 @@ from omegaconf import DictConfig, OmegaConf
 
 from ask_the_database.inference.pipeline import NL2SQLPipeline
 from ask_the_database.rewards.multi_turn_reward import MultiTurnRewardEvaluator
+from ask_the_database.rewards.rubric import SQLRewardRubric
+from ask_the_database.training.adapters.base import RolloutBatch
 from ask_the_database.training.adapters.skyrl_adapter import SkyRLSQLEnvironment
-from ask_the_database.training.adapters.trl_grpo import compute_group_normalized_rewards
+from ask_the_database.training.adapters.trl_grpo import (
+    TRLGRPOAdapter,
+    compute_group_normalized_rewards,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -24,6 +29,8 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
     reward_cfg = getattr(cfg, "reward", None)
     reward_evaluator = MultiTurnRewardEvaluator(config=reward_cfg)
     env = SkyRLSQLEnvironment(config=training_cfg, reward_evaluator=reward_evaluator)
+    rubric = SQLRewardRubric(reward_cfg)
+    adapter = TRLGRPOAdapter(cfg, rubric)
 
     dry_run = bool(getattr(cfg, "dry_run", False) or getattr(training_cfg, "dry_run", False))
     num_rollouts = int(getattr(training_cfg, "num_rollouts_per_prompt", 4))
@@ -108,9 +115,20 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                     [round(a, 3) for a in advantages[:4]],
                 )
 
+            # Evaluate adapter step on mock batch and persist checkpoint
+            mock_batch = RolloutBatch(
+                prompts=[instance["question"]] * num_rollouts,
+                completions=["SELECT COUNT(*) FROM test_table;"] * num_rollouts,
+                gold_sqls=[instance["gold_sql"]] * num_rollouts,
+                db_paths=[tmp_db_path] * num_rollouts,
+            )
+            step_metrics = adapter.train_step(mock_batch)
+            telemetry["last_step_metrics"] = step_metrics
+
             # Persist dry-run state artifacts
             out_path = Path(output_dir)
             out_path.mkdir(parents=True, exist_ok=True)
+            adapter.save_checkpoint(str(out_path))
             with open(out_path / "training_state.json", "w", encoding="utf-8") as f:
                 json.dump(
                     {
@@ -119,6 +137,7 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                         "final_mean_reward": (
                             telemetry["mean_rewards"][-1] if telemetry["mean_rewards"] else 0.0
                         ),
+                        "last_step_metrics": step_metrics,
                     },
                     f,
                     indent=2,
@@ -203,11 +222,13 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
     for step in range(total_steps):
         instance = instances[step % len(instances)]
         rollout_rewards: list[float] = []
+        completions: list[str] = []
 
         for _ in range(num_rollouts):
             env.reset(instance)
             done = False
             r = 0.0
+            last_action = ""
             while not done:
                 tables = env.registry.schema_manager.get_tables() if env.registry else None
                 sampling_temp = float(getattr(training_cfg, "temperature", 0.7))
@@ -218,8 +239,18 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                     do_sample=True,
                     temperature=sampling_temp,
                 )
+                last_action = action
                 _, r, done, _ = env.step(action)
             rollout_rewards.append(r)
+            completions.append(last_action)
+
+        batch = RolloutBatch(
+            prompts=[instance.get("question", "")] * num_rollouts,
+            completions=completions,
+            gold_sqls=[instance.get("gold_sql", "")] * num_rollouts,
+            db_paths=[str(instance.get("db_path", ":memory:"))] * num_rollouts,
+        )
+        step_metrics = adapter.train_step(batch)
 
         advantages = compute_group_normalized_rewards(rollout_rewards, group_size=num_rollouts)
         mean_reward = sum(rollout_rewards) / len(rollout_rewards) if rollout_rewards else 0.0
@@ -227,34 +258,37 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
         telemetry["episodes_completed"] += 1
         telemetry["mean_rewards"].append(mean_reward)
         telemetry["group_advantages"].append(advantages)
+        telemetry["last_step_metrics"] = step_metrics
 
         if wandb_run is not None:
-            wandb.log(
-                {
-                    "step": step + 1,
-                    "mean_reward": mean_reward,
-                    "min_reward": min(rollout_rewards) if rollout_rewards else 0.0,
-                    "max_reward": max(rollout_rewards) if rollout_rewards else 0.0,
-                    "advantage_mean": (sum(advantages) / len(advantages) if advantages else 0.0),
-                },
-                step=step + 1,
-            )
+            wandb_payload = {
+                "step": step + 1,
+                "mean_reward": mean_reward,
+                "min_reward": min(rollout_rewards) if rollout_rewards else 0.0,
+                "max_reward": max(rollout_rewards) if rollout_rewards else 0.0,
+                "advantage_mean": (sum(advantages) / len(advantages) if advantages else 0.0),
+            }
+            wandb_payload.update(step_metrics)
+            wandb.log(wandb_payload, step=step + 1)
 
         if (step + 1) % logging_steps == 0 or step == 0 or (step + 1) == total_steps:
             logger.info(
-                "Step %d/%d (%.1f%%) — Mean Reward: %.4f | Min: %.4f | Max: %.4f | Advantages: %s",
+                "Step %d/%d (%.1f%%) [%s] — Mean Reward: %.4f | Policy Loss: %.4f | Filtered: %.1f%% | Effective Tokens: %d | Advantages: %s",
                 step + 1,
                 total_steps,
                 ((step + 1) / total_steps) * 100,
+                adapter.grpo_config.algorithm.upper(),
                 mean_reward,
-                min(rollout_rewards) if rollout_rewards else 0.0,
-                max(rollout_rewards) if rollout_rewards else 0.0,
+                step_metrics.get("policy_loss", 0.0),
+                step_metrics.get("filtered_groups_ratio", 0.0) * 100.0,
+                int(step_metrics.get("effective_tokens", 0)),
                 [round(a, 3) for a in advantages[:4]],
             )
 
         if (step + 1) % save_steps == 0 or (step + 1) == total_steps:
             out_path = Path(output_dir)
             out_path.mkdir(parents=True, exist_ok=True)
+            adapter.save_checkpoint(str(out_path))
             with open(out_path / "training_state.json", "w", encoding="utf-8") as f:
                 json.dump(
                     {
@@ -264,6 +298,7 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                         "total_steps": total_steps,
                         "final_mean_reward": mean_reward,
                         "reward_history": telemetry["mean_rewards"],
+                        "last_step_metrics": step_metrics,
                     },
                     f,
                     indent=2,
