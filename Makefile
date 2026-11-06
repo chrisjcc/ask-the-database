@@ -158,6 +158,12 @@ train-harness-zero:
 train-grpo:
 	$(PYTHON) scripts/train_rlvr.py training=rlvr_skyrl_agent $(ARGS)
 
+train-dapo:
+	$(PYTHON) scripts/train_rlvr.py training=dapo_enterprise $(ARGS)
+
+train-gspo:
+	$(PYTHON) scripts/train_rlvr.py training=gspo_enterprise $(ARGS)
+
 # ------------------------------------------------------------
 # 4. Hyperparameter Optimization (W&B Sweeps)
 # ------------------------------------------------------------
