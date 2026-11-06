@@ -28,7 +28,7 @@ DATASET_REPO ?= chrisjcc/ask-the-database
 
 .PHONY: help \
         install install-dev lint format test setup-hooks \
-        preprocess collect-distillation dvc-repro \
+        preprocess collect-distillation dvc-repro convert-spider2-dbt test-spider2-dbt \
         train-sft train-filtered train-harness-zero train-grpo \
         sweep \
         smoke-eval evaluate-zero-budget-mve evaluate evaluate-mve compare-rlvr evaluate-verifier-mve \
@@ -54,6 +54,8 @@ help:
 	@echo "Data & Trajectory Distillation:"
 	@echo "  make preprocess               Download and normalize Spider benchmarks into Parquet"
 	@echo "  make collect-distillation     Collect K_SQL reviewed trajectories for Harness-Zero"
+	@echo "  make convert-spider2-dbt      Convert Spider 2.0-DBT DuckDB enterprise databases to SQLite"
+	@echo "  make test-spider2-dbt         Execute Spider 2.0-DBT pipeline unit and parity tests"
 	@echo "  make dvc-repro                Reproduce pipeline stages tracked in dvc.yaml"
 	@echo ""
 	@echo "Model Training & Alignment:"
@@ -124,6 +126,12 @@ preprocess:
 
 collect-distillation:
 	$(PYTHON) scripts/collect_reviewed_trajectories.py $(ARGS)
+
+convert-spider2-dbt:
+	$(PYTHON) scripts/convert_spider2_dbt.py $(ARGS)
+
+test-spider2-dbt:
+	$(PYTHON) -m pytest tests/unit/test_dbt_sqlite.py $(ARGS)
 
 dvc-repro:
 	$(DVC) repro $(ARGS)

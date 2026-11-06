@@ -95,6 +95,8 @@ WANDB_PROJECT=ask-the-database
 
 ## 1. Data Acquisition & Preprocessing
 
+### 1.1 Spider 1.0 Benchmark Preprocessing
+
 Download the SQLite database archives, extract the Spider training and validation splits, and build verified JSONL dataset splits:
 
 ```bash
@@ -104,6 +106,43 @@ make preprocess
   - `data/databases/*.sqlite` (Extracted SQLite database files)
   - `data/processed/train.jsonl` (Normalized training split, 6,997 instances)
   - `data/processed/val.jsonl` (Held-out validation split, 1,034 instances)
+
+---
+
+### 1.2 Spider 2.0-DBT Enterprise Asset Pipeline (DuckDB to SQLite Conversion)
+
+Spider 2.0-DBT evaluates text-to-SQL agents across complex enterprise analytics environments (e.g., Salesforce, Stripe, Shopify, GitHub modeled via dbt). The source assets are distributed as DuckDB database files (`.duckdb` / `.ddb`). The `DuckDBToSQLiteConverter` pipeline ports these assets into hermetic SQLite databases with automated schema definition translation, complex type handling (`TIMESTAMPTZ`, `DECIMAL`, JSON, `UUID`), and 100% row-count parity verification.
+
+#### Asset Acquisition & Directory Placement
+Download the DuckDB assets from the official Spider 2.0 repository ([xlang-ai/Spider2](https://github.com/xlang-ai/Spider2)) or Hugging Face dataset mirrors (`harborframework/harbor-datasets` / `xlangai/spider2-lite`), and place the unzipped files into:
+```
+data/raw/spider2_dbt/
+```
+
+#### Batch Conversion Target
+Execute the streaming DuckDB-to-SQLite conversion and parity validation:
+```bash
+make convert-spider2-dbt ARGS="--source-dir data/raw/spider2_dbt --target-dir data/databases/spider2_dbt --report-file results/spider2_dbt_conversion_summary.json"
+```
+* **Parameters:**
+  - `--source-dir`: Path containing source DuckDB databases (scans recursively for `.duckdb` and `.ddb` files).
+  - `--target-dir`: Destination directory where converted SQLite databases are stored under `data/databases/spider2_dbt/`, preserving the nested task directory structure to avoid name collisions across tasks sharing file names (e.g., `solution/gold.sqlite` vs `tests/gold.sqlite`).
+  - `--report-file`: JSON report documenting per-database latency, table schemas, and table-level row-count parity verification.
+  - `--batch-size`: Batch streaming chunk size (default: 2000 rows).
+  - `--limit`: Optional integer to limit the number of databases converted (useful for dry runs).
+
+#### Automated Pipeline Verification
+Run the unit test suite verifying type mapping, hermetic `TIMESTAMPTZ` casting, and directory isolation:
+```bash
+make test-spider2-dbt
+```
+* This tests synthetic DuckDB databases containing complex data types (dates, timestamps, decimals, JSON, strings, NULLs), converts them to SQLite in memory, and verifies 100% row-count and schema parity.
+
+#### Zero-Budget Smoke Evaluation Gate
+Verify that core evaluation gates and mutation tests pass with sub-30ms latency:
+```bash
+make smoke-eval
+```
 
 ---
 
