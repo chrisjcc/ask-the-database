@@ -31,7 +31,8 @@ DATASET_REPO ?= chrisjcc/ask-the-database
         preprocess collect-distillation dvc-repro convert-spider2-dbt test-spider2-dbt \
         train-sft train-filtered train-harness-zero train-grpo \
         sweep \
-        smoke-eval evaluate-zero-budget-mve evaluate evaluate-mve compare-rlvr evaluate-verifier-mve \
+        smoke-eval evaluate-zero-budget-mve evaluate evaluate-spider2 test-spider2-eval evaluate-mve compare-rlvr evaluate-verifier-mve \
+        compile-paper \
         generate-hf-cards publish-hf-cards publish-hf-model publish-hf-dataset publish-hf-release \
         run-app docker-build docker-run
 
@@ -63,6 +64,8 @@ help:
 	@echo "  make train-filtered           Train SFT on successful rollouts via rejection sampling (Cond 3)"
 	@echo "  make train-harness-zero       Train SFT on K_SQL reviewed trajectories (Cond 4 - Proposed)"
 	@echo "  make train-grpo               Execute multi-turn GRPO / RLVR verifiable training (Cond 5)"
+	@echo "  make train-dapo               Execute multi-turn DAPO enterprise training (Cond 6)"
+	@echo "  make train-gspo               Execute multi-turn GSPO enterprise training (Cond 7)"
 	@echo ""
 	@echo "Hyperparameter Optimization (W&B Sweeps):"
 	@echo "  make sweep                    Launch W&B Bayesian hyperparameter sweep (FINE_TUNE_METHOD=<sft|grpo>)"
@@ -71,9 +74,14 @@ help:
 	@echo "  make smoke-eval               Execute fast in-process zero-budget smoke check (< 38ms)"
 	@echo "  make evaluate-zero-budget-mve Adjudicate 4-gate Zero-Budget Evaluation Micro-Harness"
 	@echo "  make evaluate                 Evaluate full benchmark suites (Spider, DK, Syn, Realistic)"
+	@echo "  make evaluate-spider2         Evaluate Spider 2.0-SQLite enterprise benchmark"
+	@echo "  make test-spider2-eval        Execute unit test suite for Spider 2.0 evaluation"
 	@echo "  make evaluate-mve             Adjudicate 4-condition MVE decision gates across 500 episodes"
 	@echo "  make compare-rlvr             Compare sample efficiency & asymptotic accuracy (Run A vs B)"
 	@echo "  make evaluate-verifier-mve    Adjudicate LLM-as-a-Verifier MVE decision gates & publish report"
+	@echo ""
+	@echo "Paper & Documentation:"
+	@echo "  make compile-paper            Compile ICML white paper draft into PDF (papers/draft/main.pdf)"
 	@echo ""
 	@echo "Deployment & Hugging Face Hub:"
 	@echo "  make generate-hf-cards        Generate Model Card & Dataset READMEs locally (--card-only)"
@@ -254,6 +262,15 @@ compare-rlvr:
 
 evaluate-verifier-mve:
 	$(PYTHON) scripts/run_verifier_mve.py $(ARGS)
+
+compile-paper:
+	@echo "=========================================================="
+	@echo "📄 Compiling ICML white paper draft (papers/draft/main.tex)"
+	@echo "=========================================================="
+	cd papers/draft && pdflatex -interaction=nonstopmode main.tex && bibtex main && pdflatex -interaction=nonstopmode main.tex && pdflatex -interaction=nonstopmode main.tex
+	@echo "=========================================================="
+	@echo "✅ White paper successfully compiled: papers/draft/main.pdf"
+	@echo "=========================================================="
 
 # ------------------------------------------------------------
 # 6. Deployment & Hugging Face Hub
