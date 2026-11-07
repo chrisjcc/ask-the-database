@@ -28,8 +28,9 @@ DATASET_REPO ?= chrisjcc/ask-the-database
 
 .PHONY: help \
         install install-dev lint format test setup-hooks \
-        preprocess collect-distillation dvc-repro convert-spider2-dbt test-spider2-dbt \
-        train-sft train-filtered train-harness-zero train-grpo \
+        download-spider1 preprocess collect-distillation download-spider2-dbt convert-spider2-dbt test-spider2-dbt \
+        download-spider2-lite prepare-spider2-sqlite dvc-repro \
+        train-sft train-filtered train-harness-zero train-grpo train-dapo train-gspo \
         sweep \
         smoke-eval evaluate-zero-budget-mve evaluate evaluate-spider2 test-spider2-eval evaluate-mve compare-rlvr evaluate-verifier-mve \
         compile-paper \
@@ -53,10 +54,14 @@ help:
 	@echo "  make setup-hooks              Install native git pre-commit hook (< 0.2s gate)"
 	@echo ""
 	@echo "Data & Trajectory Distillation:"
-	@echo "  make preprocess               Download and normalize Spider benchmarks into Parquet"
+	@echo "  make download-spider1         Download and extract Spider 1.0 SQLite databases"
+	@echo "  make preprocess               Download and normalize Spider benchmarks into JSONL"
 	@echo "  make collect-distillation     Collect K_SQL reviewed trajectories for Harness-Zero"
+	@echo "  make download-spider2-dbt     Download Spider 2.0-DBT DuckDB enterprise databases from HF"
 	@echo "  make convert-spider2-dbt      Convert Spider 2.0-DBT DuckDB enterprise databases to SQLite"
 	@echo "  make test-spider2-dbt         Execute Spider 2.0-DBT pipeline unit and parity tests"
+	@echo "  make download-spider2-lite    Download Spider 2.0-Lite SQLite databases and gold CSVs"
+	@echo "  make prepare-spider2-sqlite   Prepare and validate 135 Spider 2.0-SQLite evaluation tasks"
 	@echo "  make dvc-repro                Reproduce pipeline stages tracked in dvc.yaml"
 	@echo ""
 	@echo "Model Training & Alignment:"
@@ -129,11 +134,17 @@ setup-hooks:
 # 2. Data Preprocessing & Trajectory Distillation
 # ------------------------------------------------------------
 
+download-spider1:
+	$(PYTHON) scripts/download_spider1.py $(ARGS)
+
 preprocess:
 	$(PYTHON) scripts/preprocess_data.py $(ARGS)
 
 collect-distillation:
 	$(PYTHON) scripts/collect_reviewed_trajectories.py $(ARGS)
+
+download-spider2-dbt:
+	$(PYTHON) scripts/download_spider2_dbt.py $(ARGS)
 
 convert-spider2-dbt:
 	$(PYTHON) scripts/convert_spider2_dbt.py $(ARGS)
