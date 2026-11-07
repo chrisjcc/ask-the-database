@@ -14,7 +14,7 @@ In our empirical investigation of post-trained relational models across the held
 
 | Evaluation Regime | Conventional SFT Baseline | Procedurally Grounded Agent (Harness-Zero GRPO) | Empirical Delta ($\Delta$) | Core Operational Mechanism |
 | :--- | :---: | :---: | :---: | :--- |
-| **Autonomous Zero-Knowledge Multi-Turn** *(Primary Objective: Schema Withheld, Max 5 Turns)* | 1.26% TS | **13.54% TS** | **+12.28 pp (10.7×)** | **Grounded Agent Dominates**: Baseline undergoes catastrophic exploration collapse ($\operatorname{std}(R) \to 0$). |
+| **Autonomous Zero-Knowledge Multi-Turn** *(Primary Objective: Schema Withheld, Max 5 Turns)* | 1.26% TS | **13.54% TS** | **+12.28 pp (10.7×)** | **Grounded Agent Dominates**: Baseline undergoes catastrophic exploration collapse ($\mathrm{std}(R) \to 0$). |
 | **Static Single-Turn Full-DDL Compound** *(Diagnostic: Best-of-5 Verifier, Full DDL in Prompt)* | **48.84% TS** | 37.72% TS | -11.12 pp | **Baseline Wins**: Baseline is 100% in-distribution; agent pays a "Tool-Calling Format Tax". |
 
 ### 1.2 The Discovered Trade-Off: "The Tool-Calling Tax"

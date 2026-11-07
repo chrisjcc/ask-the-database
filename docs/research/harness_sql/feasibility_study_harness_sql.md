@@ -20,7 +20,7 @@ However, the two projects depart substantially in their core technical pillars, 
 * **HarnessSQL** focuses exclusively on **policy training** (Full-Trajectory SFT from high-capacity teacher rejection sampling followed by distributed execution-reward RL via DAPO/GSPO in Slime/Megatron-LM) on long-horizon enterprise benchmarks (**Spider 2.0-SQLite**, **BIRD-Interact**, **LiveSQLBench**). It features **zero test-time verification**, uses binary terminal execution rewards, and relies on an external Node.js DeepSeek Harness (`DSH`) runtime.
 * **AskTheDatabase** focuses on **in-flight procedural distillation**, **exploration collapse dynamics in RLVR**, **compound test-time verification**, and **sub-second diagnostic evaluation**:
   1. *Harness-Zero Procedural Distillation*: In-flight monitoring and repair ($\mathcal{K}_{\text{SQL}}$) with **zero ground-truth SQL leakage** (avoiding the survivorship bias of teacher rejection sampling).
-  2. *Cold-Start RLVR Mechanics*: Identifying and resolving the zero-variance exploration collapse in GRPO ($\operatorname{std}(R) \to 0 \implies A_i \to 0$).
+  2. *Cold-Start RLVR Mechanics*: Identifying and resolving the zero-variance exploration collapse in GRPO ($\mathrm{std}(R) \to 0 \implies A_i \to 0$).
   3. *Verifiable Rewards with Mutation Testing*: 4-tier hierarchical rubric evaluating test-suite mutation equivalence across perturbed database states (eliminating false-positive table matches).
   4. *Compound Test-Time Verification*: Continuous logit expectation, Probabilistic Pivot Tournaments, Candidate Pool Quality Theory (Theorem 4.1), and Multi-Turn Trajectory Verification.
   5. *Zero-Budget Evaluation Micro-Harness*: Sub-second (126.8 ms) in-memory diagnostic engine with perfect rank correlation ($\rho = 1.000$) to Spider.
@@ -145,7 +145,7 @@ HarnessSQL Repository Layout:
 * **Feasibility**: **Low Portability (Architectural Incompatibility)**.
 * **Dependencies**: Slime, Megatron-LM, SGLang, Ray, Slurm multi-GPU cluster, CUDA 12+, distributed torchrun.
 * **Analysis**: AskTheDatabase uses Hugging Face TRL, PEFT LoRA, and the SkyRL environment adapter. Importing HarnessSQL's full RL infrastructure would require rewriting our training pipeline, abandoning our lightweight PEFT/LoRA setup, and requiring dedicated multi-node GPU clusters.
-* **Algorithmic Takeaway (Feasible)**: We do **not** need their distributed Slime code to benefit from **DAPO's core algorithmic insight**: **Dynamic Sampling**. In our paper, we proved that vanishing intra-group reward variance ($\operatorname{std}(R) \to 0$) stalls GRPO for 27 steps. DAPO solves this by filtering out prompt groups where all rollouts fail ($A_i = 0$). We can easily add dynamic group filtering to our existing `TRLGRPOAdapter` in fewer than 25 lines of PyTorch!
+* **Algorithmic Takeaway (Feasible)**: We do **not** need their distributed Slime code to benefit from **DAPO's core algorithmic insight**: **Dynamic Sampling**. In our paper, we proved that vanishing intra-group reward variance ($\mathrm{std}(R) \to 0$) stalls GRPO for 27 steps. DAPO solves this by filtering out prompt groups where all rollouts fail ($A_i = 0$). We can easily add dynamic group filtering to our existing `TRLGRPOAdapter` in fewer than 25 lines of PyTorch!
 
 #### Component D: `harness/dsh-sql` (DeepSeek Harness / Node.js Middleware)
 * **What it does**: Customizes the DeepSeek Harness (DSH) framework, running an agent loop in Node.js with Cordis middleware hooks that call Python/SQLite sub-processes.
@@ -172,7 +172,7 @@ In Section 5.3 and Table 4 of HarnessSQL, the authors evaluate three distinct po
 
 #### 1. DAPO (Decoupled Clip & Dynamic Sampling)
 DAPO retains token-level policy gradients but introduces three refinements (Appendix C.2):
-1. **Dynamic Sampling ($\mathcal{Q}_{\text{eff}}$)**: Filters out prompt groups where intra-group reward variance is zero ($\operatorname{std}(R) = 0$):
+1. **Dynamic Sampling ($\mathcal{Q}_{\text{eff}}$)**: Filters out prompt groups where intra-group reward variance is zero ($\mathrm{std}(R) = 0$):
    $$\mathcal{Q}_{\text{eff}} = \left\{ q \in \mathcal{B} \mid \exists i, j \text{ s.t. } R_i \ne R_j \right\}$$
    This directly eliminates the zero-advantage gradient stall we identified in Section 5.3 of our white paper.
 2. **Decoupled Asymmetric Clipping**: Allows larger policy probability increases for positively advantaged exploratory tokens by setting $\epsilon_{\text{high}} = 0.28 > \epsilon_{\text{low}} = 0.20$.
@@ -182,7 +182,7 @@ DAPO retains token-level policy gradients but introduces three refinements (Appe
 GSPO (Zheng et al., 2025) addresses the fundamental mismatch between token-level clipping and trajectory-level rewards. In multi-turn agents (1,000–4,000 tokens), token-level importance ratios $\rho_{i,t}$ exhibit high variance. GSPO constructs a single length-normalized sequence ratio:
 $$s_i(\theta) = \exp \left( \frac{1}{|\mathcal{T}_i|} \sum_{t \in \mathcal{T}_i} \log \frac{\pi_\theta(a_{i,t} \mid s_{i,t})}{\pi_{\text{old}}(a_{i,t} \mid s_{i,t})} \right)$$
 and clips the entire trajectory uniformly:
-$$\mathcal{L}_{\text{GSPO}}(\theta) = -\frac{1}{G} \sum_{i=1}^G \min \left( s_i(\theta) \hat{A}_i, \, \operatorname{clip}(s_i(\theta), 1 - \epsilon_s, 1 + \epsilon_s) \hat{A}_i \right)$$
+$$\mathcal{L}_{\text{GSPO}}(\theta) = -\frac{1}{G} \sum_{i=1}^G \min \left( s_i(\theta) \hat{A}_i, \, \mathrm{clip}(s_i(\theta), 1 - \epsilon_s, 1 + \epsilon_s) \hat{A}_i \right)$$
 where $\epsilon_s \approx 3 \times 10^{-4}$. This sequence-level alignment explains why GSPO achieved the highest out-of-distribution transfer on LiveSQLBench.
 
 #### 3. Relevance to AskTheDatabase
@@ -260,7 +260,7 @@ flowchart TD
 
 ### Phase 2: Algorithmic Refinement (Sub-Issue [#87](https://github.com/chrisjcc/ask-the-database/issues/87) / PR `feat/grpo-dapo-gspo-adapter`)
 * **Action**: Implement both **DAPO** and **GSPO** policy optimization objectives in `src/ask_the_database/training/adapters/trl_grpo.py`:
-  * **Dynamic Sampling**: Prune rollout groups with zero intra-group reward variance ($\operatorname{std}(R) = 0$) to eliminate zero-advantage gradient stall.
+  * **Dynamic Sampling**: Prune rollout groups with zero intra-group reward variance ($\mathrm{std}(R) = 0$) to eliminate zero-advantage gradient stall.
   * **DAPO Asymmetric Clipping**: Implement decoupled clipping radii ($\epsilon_{\text{low}}=0.20, \epsilon_{\text{high}}=0.28$) with batch token count loss normalization.
   * **GSPO Sequence Ratio**: Implement length-normalized trajectory importance weighting $s_i(\theta) = \exp(\frac{1}{N_i} \sum \log \rho_{i,t})$ with sequence-level clipping ($\epsilon_s = 3 \times 10^{-4}$).
 * **Outcome**: Directly reinforces our theoretical findings in Section 5.3 regarding exploration collapse in GRPO, provides structural stability across multi-turn trajectories, and establishes a principled comparison under our 4-tier mutation-verified reward rubric.
@@ -293,7 +293,7 @@ For full empirical analysis, training telemetry graphs, and failure mode taxonom
 #### Key Research Takeaways:
 1. **Validation of Prior Literature**: Base open-weights models achieve near-zero accuracy when evaluated out-of-distribution on Spider 2.0 without domain-grounded enterprise training, confirming Yang et al. (2026, Table 1).
 2. **GSPO Sequence Invariance Superiority**: GSPO broke out of $0.00\%$, successfully solving `local275` by bounding gradient variance through its length-normalized sequence ratio ($s_i(\theta)$) and sequence clipping radius ($\epsilon_s = 3\times 10^{-4}$).
-3. **Dynamic Sampling Masking**: Pruned zero-variance failure groups ($\operatorname{std}(R)=0 \implies \mathcal{Q}_{\text{eff}} = \emptyset$) during training, protecting policy parameters from uninformative gradient noise.
+3. **Dynamic Sampling Masking**: Pruned zero-variance failure groups ($\mathrm{std}(R)=0 \implies \mathcal{Q}_{\text{eff}} = \emptyset$) during training, protecting policy parameters from uninformative gradient noise.
 
 ---
 
