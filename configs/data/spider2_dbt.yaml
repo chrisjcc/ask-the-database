@@ -1,0 +1,11 @@
+# @package data
+dataset_name: "spider2_dbt"
+hf_repo_id: "harborframework/harbor-datasets"
+repo_type: "dataset"
+remote_dir: "datasets/spider2-dbt"
+target_raw_dir: "data/raw/spider2_dbt"
+target_db_dir: "data/databases/spider2_dbt"
+file_pattern: "*.duckdb"
+strip_prefix: true
+batch_size: 2000
+verify_parity: true
