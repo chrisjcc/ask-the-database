@@ -82,17 +82,17 @@ However, rejection sampling suffers from severe **survivorship bias**. By discar
 ### 3. The Cold-Start Gradient Collapse in RLVR
 When training multi-turn agents with Group Relative Policy Optimization (GRPO), the policy gradient is driven by intra-group advantage:
 
-$$A_i = \frac{R_i - \operatorname{mean}(\{R_j\}_{j=1}^G)}{\operatorname{std}(\{R_j\}_{j=1}^G) + \epsilon}$$
+$$A_i = \frac{R_i - \mathrm{mean}(\{R_j\}_{j=1}^G)}{\mathrm{std}(\{R_j\}_{j=1}^G) + \epsilon}$$
 
 If an ungrounded model explores an unseen database schema without prior exploratory habits, **all $G$ sampled rollouts in the group frequently fail simultaneously** ($R_1 = R_2 = \dots = R_G = -1.0$). 
 
 When every rollout fails:
 
-$$\operatorname{std}(\{R_j\}_{j=1}^G) = 0 \implies A_i = 0 \quad \forall i$$
+$$\mathrm{std}(\{R_j\}_{j=1}^G) = 0 \implies A_i = 0 \quad \forall i$$
 
 The advantage vanishes, the policy gradient collapses to zero ($\nabla_\theta \mathcal{J} = 0$), and the model enters an extended exploration plateau where it receives no directional learning signal whatsoever. 
 
-In our empirical 250-step study, an agent initialized from standard single-turn SFT stalled for **27 steps** before producing a single non-negative reward, collapsed to an intra-group reward standard deviation of $\operatorname{std}(R) = 0.045$, and ended with a disastrous **1.26% Test-Suite accuracy** and **0.20% recovery rate** on Spider Dev. Without prior procedural grounding, RLVR alone completely fails to bootstrap multi-turn database interaction.
+In our empirical 250-step study, an agent initialized from standard single-turn SFT stalled for **27 steps** before producing a single non-negative reward, collapsed to an intra-group reward standard deviation of $\mathrm{std}(R) = 0.045$, and ended with a disastrous **1.26% Test-Suite accuracy** and **0.20% recovery rate** on Spider Dev. Without prior procedural grounding, RLVR alone completely fails to bootstrap multi-turn database interaction.
 
 ---
 
@@ -159,11 +159,11 @@ Because Harness-Zero pre-fine-tuning elevates the model's schema pre-inspection 
   [Fail: -0.4]  [Syntax: +0.2]  [TS Match: +1.0]  [Err: -0.5]  ──► std(R) = 0.44 ──► High Policy Gradient!
 ```
 
-This guarantees divergent intra-group returns ($\operatorname{std}(R) > 0$), providing high-variance advantage estimates that eliminate the cold-start exploration plateau.
+This guarantees divergent intra-group returns ($\mathrm{std}(R) > 0$), providing high-variance advantage estimates that eliminate the cold-start exploration plateau.
 
 In our empirical 250-step multi-turn GRPO benchmark across 20 unseen schemas:
 * **Exploration Bootstrap**: Harness-Zero achieved positive rewards by **Step 1**, a **27.0× speedup** over the Conventional SFT baseline which stalled until Step 27.
-* **Advantage Stability**: Harness-Zero sustained a mean intra-group standard deviation of **$\operatorname{std}(R) = 0.443$** ($9.8\times$ higher than the baseline's $0.045$).
+* **Advantage Stability**: Harness-Zero sustained a mean intra-group standard deviation of **$\mathrm{std}(R) = 0.443$** ($9.8\times$ higher than the baseline's $0.045$).
 * **Cumulative Sample Efficiency**: Harness-Zero accumulated an Area Under Curve (AUC) of **-87.09**, delivering a massive **+83.94 AUC advantage** over the baseline (-171.03).
 * **Asymptotic Generalization**: On held-out Spider Dev, Harness-Zero reached **19.92% Test-Suite accuracy**—a **15.8× relative boost** over the collapsed baseline (1.26%), while boosting autonomous error recovery by **56.9×** (11.38% vs 0.20%).
 
@@ -330,7 +330,7 @@ To test whether models can learn multi-turn tool interaction purely through rein
 | Optimization & Alignment Dimension | Cold-Start RLVR (from SFT) | Procedurally Grounded RLVR (from H-0) | Advantage | Empirical Finding |
 | :--- | :---: | :---: | :---: | :---: |
 | **Exploration Bootstrap** (Steps to $R > 0$) | 27 steps (Plateau) | **1 step** | **27.0× Faster** | Bypasses zero-gradient exploration plateau |
-| **Advantage Stability** (Mean Intra-Group $\operatorname{std}(R)$) | 0.045 (Near-Zero) | **0.443** | **9.8× Higher** | Resolves vanishing policy gradient |
+| **Advantage Stability** (Mean Intra-Group $\mathrm{std}(R)$) | 0.045 (Near-Zero) | **0.443** | **9.8× Higher** | Resolves vanishing policy gradient |
 | **Cumulative Sample Efficiency** (Return AUC) | -171.03 | **-87.09** | **+83.94 $\Delta$** | Sustained sample-efficient trajectory updates |
 | **Asymptotic Generalization** (Held-Out Spider Dev TS) | 1.26% | **19.92%** | **15.8× Higher** | Overcomes exploration collapse on unseen schemas |
 | **Autonomous Error Recovery Rate** ($R_{\text{rec}}$) | 0.20% | **11.38%** | **56.9× Higher** | Acquires active exception handling ability |

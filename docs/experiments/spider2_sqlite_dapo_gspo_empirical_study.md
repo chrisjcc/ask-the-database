@@ -135,8 +135,8 @@ On step 100 of training:
   "loss": 0.0
 }
 ```
-* **Empirical Mechanism**: All 4 sampled completions received identical reward $-1.00$ ($\operatorname{std}(R) = 0.0$).
-* **Dynamic Sampling Response**: Detected zero variance ($\operatorname{std}(R) \le 10^{-4}$) and automatically pruned the entire group ($\mathcal{Q}_{\text{eff}} = \emptyset$).
+* **Empirical Mechanism**: All 4 sampled completions received identical reward $-1.00$ ($\mathrm{std}(R) = 0.0$).
+* **Dynamic Sampling Response**: Detected zero variance ($\mathrm{std}(R) \le 10^{-4}$) and automatically pruned the entire group ($\mathcal{Q}_{\text{eff}} = \emptyset$).
 * **Result**: `filtered_groups_ratio = 1.0`, yielding strictly **0 effective tokens** and **0 policy loss**. The parameters were not subjected to the noisy, zero-advantage updates that plague standard GRPO.
 
 ---
