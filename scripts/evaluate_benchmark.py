@@ -40,9 +40,16 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
     max_turns = int(evaluation_section.get("max_turns", 5))
     max_samples = evaluation_section.get("max_samples")
     output_dir = Path(evaluation_section.get("output_dir", "results"))
-    summary_file = Path(
-        evaluation_section.get("summary_file", output_dir / "evaluation_summary.json")
-    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    raw_summary_file = evaluation_section.get("summary_file")
+    if raw_summary_file:
+        raw_p = Path(raw_summary_file)
+        if raw_p.parent.name != output_dir.name and output_dir.name != "results":
+            summary_file = output_dir / raw_p.name
+        else:
+            summary_file = raw_p
+    else:
+        summary_file = output_dir / "summary.json"
 
     benchmarks = evaluation_section.get(
         "benchmarks", ["spider", "spider_dk", "spider_syn", "spider_realistic"]
@@ -157,7 +164,9 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
         total = len(samples)
         ts_passed, ex_passed, valid_count, recoveries = 0, 0, 0, 0
 
-        for s in tqdm(samples, desc=bench):
+        pred_file = output_dir / f"{bench}_predictions.jsonl"
+
+        for idx, s in enumerate(tqdm(samples, desc=bench)):
             question = s["question"]
             db_path = s["db_path"]
             db_id = s.get("db_id", "default_db")
@@ -265,6 +274,37 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
             if had_recovery and passed_ts:
                 recoveries += 1
 
+            # Stream prediction record to file
+            pred_record = {
+                "instance_id": s.get("instance_id") or s.get("question_id") or f"sample_{idx}",
+                "question": question,
+                "db_id": db_id,
+                "generated_sql": final_sql,
+                "gold_sql": gold_sql,
+                "valid_execution": final_success,
+                "passed_ex": passed_ex,
+                "passed_ts": passed_ts,
+                "had_recovery": had_recovery,
+            }
+            with open(pred_file, "a", encoding="utf-8") as pf:
+                pf.write(json.dumps(pred_record) + "\n")
+
+            # Progressively persist running summary so results are visible live on disk
+            samples_so_far = idx + 1
+            leaderboard[bench] = {
+                "total_samples": total,
+                "samples_evaluated": samples_so_far,
+                "test_suite_accuracy_ts": round(ts_passed / samples_so_far * 100, 2),
+                "execution_accuracy_ex": round(ex_passed / samples_so_far * 100, 2),
+                "valid_execution_rate_va": round(valid_count / samples_so_far * 100, 2),
+                "recovery_rate_mrr": round(
+                    recoveries / max(1, samples_so_far - ex_passed) * 100, 2
+                ),
+            }
+            with open(summary_file, "w", encoding="utf-8") as sf:
+                json.dump(leaderboard, sf, indent=2)
+
+        # Finalize benchmark summary
         leaderboard[bench] = {
             "total_samples": total,
             "test_suite_accuracy_ts": (round(ts_passed / total * 100, 2) if total else 0.0),

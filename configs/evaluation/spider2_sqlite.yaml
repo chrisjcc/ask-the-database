@@ -4,7 +4,7 @@ benchmarks:
 max_samples: null
 max_turns: 5
 output_dir: "results/eval_spider2_sqlite"
-summary_file: "results/eval_spider2_sqlite/summary.json"
+summary_file: "${evaluation.output_dir}/summary.json"
 metrics:
   - ts
   - ex
