@@ -13,6 +13,7 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from tqdm import tqdm
 
+from ask_the_database.environment.base import ExecutionResult
 from ask_the_database.environment.sqlite_env import SQLiteEnvironment
 from ask_the_database.environment.test_suite_evaluator import TestSuiteEvaluator
 from ask_the_database.inference.candidate_sampler import CandidateSampler
@@ -39,9 +40,16 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
     max_turns = int(evaluation_section.get("max_turns", 5))
     max_samples = evaluation_section.get("max_samples")
     output_dir = Path(evaluation_section.get("output_dir", "results"))
-    summary_file = Path(
-        evaluation_section.get("summary_file", output_dir / "evaluation_summary.json")
-    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    raw_summary_file = evaluation_section.get("summary_file")
+    if raw_summary_file:
+        raw_p = Path(raw_summary_file)
+        if raw_p.parent.name != output_dir.name and output_dir.name != "results":
+            summary_file = output_dir / raw_p.name
+        else:
+            summary_file = raw_p
+    else:
+        summary_file = output_dir / "summary.json"
 
     benchmarks = evaluation_section.get(
         "benchmarks", ["spider", "spider_dk", "spider_syn", "spider_realistic"]
@@ -156,7 +164,9 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
         total = len(samples)
         ts_passed, ex_passed, valid_count, recoveries = 0, 0, 0, 0
 
-        for s in tqdm(samples, desc=bench):
+        pred_file = output_dir / f"{bench}_predictions.jsonl"
+
+        for idx, s in enumerate(tqdm(samples, desc=bench)):
             question = s["question"]
             db_path = s["db_path"]
             db_id = s.get("db_id", "default_db")
@@ -211,21 +221,90 @@ def run_benchmark_evaluation(cfg: DictConfig | dict[str, Any]) -> dict[str, Any]
                 valid_count += 1
 
             # 2. Execution accuracy (EX)
+            gold_csv_paths = s.get("gold_csv_paths") or (
+                [s["gold_csv_path"]] if s.get("gold_csv_path") else []
+            )
             db_env = SQLiteEnvironment(db_path)
-            res_gold = db_env.execute(gold_sql)
-            ex_res = ex_evaluator.compare(final_exec_res, res_gold)
-            if ex_res.is_equivalent:
+            passed_ex = False
+
+            if gold_csv_paths:
+                try:
+                    import pandas as pd
+
+                    for csv_p in gold_csv_paths:
+                        if Path(csv_p).exists():
+                            gold_df = pd.read_csv(csv_p)
+                            gold_tuples = [tuple(r) for r in gold_df.to_numpy()]
+                            res_gold = ExecutionResult(
+                                success=True,
+                                data=gold_tuples,
+                                columns=list(gold_df.columns),
+                                row_count=len(gold_tuples),
+                                execution_time_ms=0.0,
+                                error_message=None,
+                                error_type=None,
+                            )
+                            ex_res = ex_evaluator.compare(final_exec_res, res_gold)
+                            if ex_res.is_equivalent:
+                                passed_ex = True
+                                break
+                except Exception as e:
+                    logger.warning(
+                        "Error reading gold CSVs for instance '%s': %s", s.get("instance_id"), e
+                    )
+            else:
+                res_gold = db_env.execute(gold_sql)
+                ex_res = ex_evaluator.compare(final_exec_res, res_gold)
+                passed_ex = ex_res.is_equivalent
+
+            if passed_ex:
                 ex_passed += 1
 
             # 3. Test-suite accuracy (TS)
-            ts_res = ts_evaluator.evaluate_test_suite(db_path, final_sql, gold_sql)
-            if ts_res.passed_all_suites:
+            if gold_sql and gold_sql != "SELECT 1;":
+                ts_res = ts_evaluator.evaluate_test_suite(db_path, final_sql, gold_sql)
+                passed_ts = ts_res.passed_all_suites
+            else:
+                passed_ts = ex_res.is_equivalent
+
+            if passed_ts:
                 ts_passed += 1
 
             # 4. Multi-turn recovery rate (MRR)
-            if had_recovery and ts_res.passed_all_suites:
+            if had_recovery and passed_ts:
                 recoveries += 1
 
+            # Stream prediction record to file
+            pred_record = {
+                "instance_id": s.get("instance_id") or s.get("question_id") or f"sample_{idx}",
+                "question": question,
+                "db_id": db_id,
+                "generated_sql": final_sql,
+                "gold_sql": gold_sql,
+                "valid_execution": final_success,
+                "passed_ex": passed_ex,
+                "passed_ts": passed_ts,
+                "had_recovery": had_recovery,
+            }
+            with open(pred_file, "a", encoding="utf-8") as pf:
+                pf.write(json.dumps(pred_record) + "\n")
+
+            # Progressively persist running summary so results are visible live on disk
+            samples_so_far = idx + 1
+            leaderboard[bench] = {
+                "total_samples": total,
+                "samples_evaluated": samples_so_far,
+                "test_suite_accuracy_ts": round(ts_passed / samples_so_far * 100, 2),
+                "execution_accuracy_ex": round(ex_passed / samples_so_far * 100, 2),
+                "valid_execution_rate_va": round(valid_count / samples_so_far * 100, 2),
+                "recovery_rate_mrr": round(
+                    recoveries / max(1, samples_so_far - ex_passed) * 100, 2
+                ),
+            }
+            with open(summary_file, "w", encoding="utf-8") as sf:
+                json.dump(leaderboard, sf, indent=2)
+
+        # Finalize benchmark summary
         leaderboard[bench] = {
             "total_samples": total,
             "test_suite_accuracy_ts": (round(ts_passed / total * 100, 2) if total else 0.0),

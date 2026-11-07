@@ -1,0 +1,9 @@
+{
+  "spider2_sqlite": {
+    "total_samples": 135,
+    "test_suite_accuracy_ts": 0.74,
+    "execution_accuracy_ex": 0.74,
+    "valid_execution_rate_va": 14.07,
+    "recovery_rate_mrr": 0.0
+  }
+}

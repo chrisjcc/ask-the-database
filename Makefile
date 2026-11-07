@@ -28,10 +28,12 @@ DATASET_REPO ?= chrisjcc/ask-the-database
 
 .PHONY: help \
         install install-dev lint format test setup-hooks \
-        preprocess collect-distillation dvc-repro \
-        train-sft train-filtered train-harness-zero train-grpo \
+        download-spider1 preprocess collect-distillation download-spider2-dbt convert-spider2-dbt test-spider2-dbt \
+        download-spider2-lite prepare-spider2-sqlite dvc-repro \
+        train-sft train-filtered train-harness-zero train-grpo train-dapo train-gspo \
         sweep \
-        smoke-eval evaluate-zero-budget-mve evaluate evaluate-mve compare-rlvr evaluate-verifier-mve \
+        smoke-eval evaluate-zero-budget-mve evaluate evaluate-spider2 test-spider2-eval evaluate-mve compare-rlvr evaluate-verifier-mve \
+        compile-paper \
         generate-hf-cards publish-hf-cards publish-hf-model publish-hf-dataset publish-hf-release \
         run-app docker-build docker-run
 
@@ -52,8 +54,14 @@ help:
 	@echo "  make setup-hooks              Install native git pre-commit hook (< 0.2s gate)"
 	@echo ""
 	@echo "Data & Trajectory Distillation:"
-	@echo "  make preprocess               Download and normalize Spider benchmarks into Parquet"
+	@echo "  make download-spider1         Download and extract Spider 1.0 SQLite databases"
+	@echo "  make preprocess               Download and normalize Spider benchmarks into JSONL"
 	@echo "  make collect-distillation     Collect K_SQL reviewed trajectories for Harness-Zero"
+	@echo "  make download-spider2-dbt     Download Spider 2.0-DBT DuckDB enterprise databases from HF"
+	@echo "  make convert-spider2-dbt      Convert Spider 2.0-DBT DuckDB enterprise databases to SQLite"
+	@echo "  make test-spider2-dbt         Execute Spider 2.0-DBT pipeline unit and parity tests"
+	@echo "  make download-spider2-lite    Download Spider 2.0-Lite SQLite databases and gold CSVs"
+	@echo "  make prepare-spider2-sqlite   Prepare and validate 135 Spider 2.0-SQLite evaluation tasks"
 	@echo "  make dvc-repro                Reproduce pipeline stages tracked in dvc.yaml"
 	@echo ""
 	@echo "Model Training & Alignment:"
@@ -61,6 +69,8 @@ help:
 	@echo "  make train-filtered           Train SFT on successful rollouts via rejection sampling (Cond 3)"
 	@echo "  make train-harness-zero       Train SFT on K_SQL reviewed trajectories (Cond 4 - Proposed)"
 	@echo "  make train-grpo               Execute multi-turn GRPO / RLVR verifiable training (Cond 5)"
+	@echo "  make train-dapo               Execute multi-turn DAPO enterprise training (Cond 6)"
+	@echo "  make train-gspo               Execute multi-turn GSPO enterprise training (Cond 7)"
 	@echo ""
 	@echo "Hyperparameter Optimization (W&B Sweeps):"
 	@echo "  make sweep                    Launch W&B Bayesian hyperparameter sweep (FINE_TUNE_METHOD=<sft|grpo>)"
@@ -69,9 +79,14 @@ help:
 	@echo "  make smoke-eval               Execute fast in-process zero-budget smoke check (< 38ms)"
 	@echo "  make evaluate-zero-budget-mve Adjudicate 4-gate Zero-Budget Evaluation Micro-Harness"
 	@echo "  make evaluate                 Evaluate full benchmark suites (Spider, DK, Syn, Realistic)"
+	@echo "  make evaluate-spider2         Evaluate Spider 2.0-SQLite enterprise benchmark"
+	@echo "  make test-spider2-eval        Execute unit test suite for Spider 2.0 evaluation"
 	@echo "  make evaluate-mve             Adjudicate 4-condition MVE decision gates across 500 episodes"
 	@echo "  make compare-rlvr             Compare sample efficiency & asymptotic accuracy (Run A vs B)"
 	@echo "  make evaluate-verifier-mve    Adjudicate LLM-as-a-Verifier MVE decision gates & publish report"
+	@echo ""
+	@echo "Paper & Documentation:"
+	@echo "  make compile-paper            Compile ICML white paper draft into PDF (papers/draft/main.pdf)"
 	@echo ""
 	@echo "Deployment & Hugging Face Hub:"
 	@echo "  make generate-hf-cards        Generate Model Card & Dataset READMEs locally (--card-only)"
@@ -119,11 +134,29 @@ setup-hooks:
 # 2. Data Preprocessing & Trajectory Distillation
 # ------------------------------------------------------------
 
+download-spider1:
+	$(PYTHON) scripts/download_spider1.py $(ARGS)
+
 preprocess:
 	$(PYTHON) scripts/preprocess_data.py $(ARGS)
 
 collect-distillation:
 	$(PYTHON) scripts/collect_reviewed_trajectories.py $(ARGS)
+
+download-spider2-dbt:
+	$(PYTHON) scripts/download_spider2_dbt.py $(ARGS)
+
+convert-spider2-dbt:
+	$(PYTHON) scripts/convert_spider2_dbt.py $(ARGS)
+
+test-spider2-dbt:
+	$(PYTHON) -m pytest tests/unit/test_dbt_sqlite.py $(ARGS)
+
+download-spider2-lite:
+	$(PYTHON) scripts/download_spider2_lite.py $(ARGS)
+
+prepare-spider2-sqlite:
+	$(PYTHON) scripts/prepare_spider2_sqlite.py $(ARGS)
 
 dvc-repro:
 	$(DVC) repro $(ARGS)
@@ -143,6 +176,12 @@ train-harness-zero:
 
 train-grpo:
 	$(PYTHON) scripts/train_rlvr.py training=rlvr_skyrl_agent $(ARGS)
+
+train-dapo:
+	$(PYTHON) scripts/train_rlvr.py training=dapo_enterprise $(ARGS)
+
+train-gspo:
+	$(PYTHON) scripts/train_rlvr.py training=gspo_enterprise $(ARGS)
 
 # ------------------------------------------------------------
 # 4. Hyperparameter Optimization (W&B Sweeps)
@@ -220,6 +259,12 @@ evaluate-zero-budget-mve:
 evaluate:
 	$(PYTHON) scripts/evaluate_benchmark.py $(ARGS)
 
+evaluate-spider2:
+	$(PYTHON) scripts/evaluate_benchmark.py evaluation=spider2_sqlite $(ARGS)
+
+test-spider2-eval:
+	$(PYTHON) -m pytest tests/unit/test_spider2_eval.py $(ARGS)
+
 evaluate-mve:
 	$(PYTHON) scripts/run_mve_evaluation.py $(ARGS)
 
@@ -228,6 +273,15 @@ compare-rlvr:
 
 evaluate-verifier-mve:
 	$(PYTHON) scripts/run_verifier_mve.py $(ARGS)
+
+compile-paper:
+	@echo "=========================================================="
+	@echo "📄 Compiling ICML white paper draft (papers/draft/main.tex)"
+	@echo "=========================================================="
+	cd papers/draft && pdflatex -interaction=nonstopmode main.tex && bibtex main && pdflatex -interaction=nonstopmode main.tex && pdflatex -interaction=nonstopmode main.tex
+	@echo "=========================================================="
+	@echo "✅ White paper successfully compiled: papers/draft/main.pdf"
+	@echo "=========================================================="
 
 # ------------------------------------------------------------
 # 6. Deployment & Hugging Face Hub

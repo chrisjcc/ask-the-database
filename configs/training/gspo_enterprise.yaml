@@ -1,0 +1,64 @@
+# -----------------------------------------------------------------------------
+# GSPO Enterprise Policy Optimization Configuration (Phase 2)
+# -----------------------------------------------------------------------------
+# Group Sequence Policy Optimization (GSPO) with length-normalized sequence ratio.
+
+algorithm: "gspo"
+enable_dynamic_sampling: true
+min_reward_std: 1.0e-4
+dapo_clip_low: 0.20
+dapo_clip_high: 0.28
+gspo_seq_epsilon: 3.0e-4
+
+# --- Paths & Seed Policy ---
+model_path: "models/rlvr/harness_zero_grpo"
+output_dir: "models/rlvr/gspo_enterprise/final"
+
+# --- Agent Rollouts & Interaction ---
+num_rollouts_per_prompt: 4
+max_turns: 5
+temperature: 0.7
+dry_run: false
+step_penalty: -0.05
+recovery_bonus: 0.3
+save_steps: 50
+
+# --- Tracking & Observability ---
+wandb:
+  enabled: false
+  project: "ask-the-database"
+
+# --- Batching & Steps ---
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+num_train_epochs: 1
+max_steps: -1
+
+# --- Optimization & Loss ---
+learning_rate: 1.0e-5
+beta: 0.04
+bf16: false
+
+# --- Logging & Saving ---
+logging_steps: 1
+save_strategy: "epoch"
+report_to: "none"
+
+# --- Generation & Sequences ---
+num_generations: 8
+max_completion_length: 512
+
+# --- PEFT / LoRA Adapter ---
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  bias: "none"
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
