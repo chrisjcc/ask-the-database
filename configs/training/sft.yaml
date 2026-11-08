@@ -1,5 +1,6 @@
 # -----------------------------------------------------------------------------
 # Supervised Fine-Tuning (SFT) Warmup Configuration (AskTheDatabase)
+# Hugging Face TRL SFTTrainer + PEFT LoRA / rsLoRA
 # -----------------------------------------------------------------------------
 # Configuration for policy warmup fine-tuning using Hugging Face TRL SFTTrainer
 # supporting both single-turn pairs (Condition 2) and multi-turn trajectories (Condition 4).
@@ -21,27 +22,45 @@ learning_rate: 2.0e-5                      # Peak learning rate (AdamW)
 warmup_steps: 10                           # Warmup steps for cosine learning rate schedule
 weight_decay: 0.01                         # Weight decay regularization
 bf16: false                                # Use bfloat16 precision (auto-detected on Ampere+)
+fp16: false                                # Use float16 precision if bf16 is not supported
 max_seq_length: 2048                       # Maximum token sequence length for ChatML prompts
+
+# --- Memory Optimization ---
+gradient_checkpointing: true               # Enable gradient checkpointing to reduce memory
+dataloader_num_workers: 0                  # Dataloader worker count
+packing: false                             # Sequence packing for SFTTrainer
 
 # --- Logging & Saving ---
 logging_steps: 5                           # How often to log training metrics
 save_strategy: "epoch"                     # How often to save a checkpoint ("epoch", "steps", "no")
 report_to: "wandb"                         # Integration to report metrics to ("wandb", "none")
+
 wandb:
   enabled: true                            # Enable Weights & Biases telemetry
   project: "ask-the-database"              # Target W&B project name
 
-# --- PEFT / LoRA Adapter ---
+# -----------------------------------------------------------------------------
+# LoRA Configuration
+# -----------------------------------------------------------------------------
+
 lora:
+  enabled: true                            # Whether to use PEFT LoRA adapter (false for full fine-tuning)
+
+  # Adapter configuration
   r: 16                                    # LoRA rank dimension
-  lora_alpha: 32                           # LoRA scaling factor (alpha / r)
-  lora_dropout: 0.05                       # LoRA dropout probability
+  lora_alpha: 32                           # LoRA scaling parameter (alpha)
+  lora_dropout: 0.05                       # Adapter dropout
+
+  # false = Standard LoRA (scaling: s = alpha / r)
+  # true  = Rank-Stabilized LoRA (rsLoRA, scaling: s = alpha / sqrt(r))
+  use_rslora: false
+
+  # Target modules for adapter injection (explicit list or string shortcut e.g. "all-linear")
+  target_modules: "all-linear"
+
+  # Optional adapter configuration
   bias: "none"                             # Bias training mode ("none", "all", "lora_only")
-  target_modules:                          # Target projection layers for adapter injection
-    - "q_proj"
-    - "k_proj"
-    - "v_proj"
-    - "o_proj"
-    - "gate_proj"
-    - "up_proj"
-    - "down_proj"
+  modules_to_save: null                    # Additional modules to train and save (list or null)
+
+  # Initialization strategy
+  init_lora_weights: true                  # Initialization strategy (true, "gaussian", etc.)

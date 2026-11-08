@@ -1,18 +1,21 @@
 """Supervised Fine-Tuning (SFT) Warmup Trainer for SQL generation.
 
-Configures LoRA / QLoRA adapters on backbone language models and orchestrates
-training using Hugging Face TRL SFTTrainer.
+Configures LoRA / rsLoRA adapters on backbone language models and orchestrates
+training using Hugging Face TRL SFTTrainer and PEFT.
 """
 
+import inspect
+import json
 import logging
 import os
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Literal, cast
 
 import torch
 from datasets import Dataset
 from omegaconf import DictConfig
-from peft import LoraConfig, TaskType, get_peft_model
+from peft import LoraConfig, PeftModel, TaskType
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -27,8 +30,128 @@ from ask_the_database.training.dataset import load_sft_dataset
 logger = logging.getLogger(__name__)
 
 
+def validate_lora_config(lora_cfg: Any) -> None:
+    """Validate LoRA / rsLoRA configuration parameters.
+
+    Ensures configuration compliance with PEFT specifications prior to model initialization.
+    If LoRA is disabled (enabled=False), parameter-level validation is skipped to permit
+    full fine-tuning without obstruction.
+
+    Args:
+        lora_cfg: DictConfig or dictionary containing LoRA configuration parameters.
+
+    Raises:
+        ValueError: If any parameter value violates bounds or expected types.
+        RuntimeError: If the installed PEFT library does not support requested features (e.g. use_rslora).
+    """
+    if lora_cfg is None:
+        return
+
+    # 1. enabled flag validation
+    enabled = getattr(lora_cfg, "enabled", True)
+    if isinstance(enabled, str):
+        if enabled.lower() in ("true", "1", "yes"):
+            enabled = True
+        elif enabled.lower() in ("false", "0", "no"):
+            enabled = False
+        else:
+            raise ValueError(f"Invalid LoRA 'enabled' flag: must be a boolean, got {enabled!r}")
+    elif not isinstance(enabled, bool):
+        raise ValueError(
+            f"Invalid LoRA 'enabled' flag: must be a boolean, got {enabled!r} ({type(enabled).__name__})"
+        )
+
+    # If LoRA is explicitly disabled, skip further LoRA parameter validation
+    if not enabled:
+        return
+
+    # 2. Check installed PEFT version supports use_rslora
+    init_params = inspect.signature(LoraConfig.__init__).parameters
+    if "use_rslora" not in init_params:
+        raise RuntimeError(
+            "The installed PEFT version does not support 'use_rslora'. "
+            "Please upgrade peft to version >= 0.9.0."
+        )
+
+    # 3. LoRA rank r (must be positive integer, not boolean)
+    r = getattr(lora_cfg, "r", 16)
+    if isinstance(r, bool) or not isinstance(r, int) or r <= 0:
+        raise ValueError(f"Invalid LoRA rank 'r': must be a positive integer, got {r!r}")
+
+    # 4. LoRA alpha lora_alpha (must be positive number, not boolean)
+    lora_alpha = getattr(lora_cfg, "lora_alpha", 32)
+    if isinstance(lora_alpha, bool) or not isinstance(lora_alpha, (int, float)) or lora_alpha <= 0:
+        raise ValueError(
+            f"Invalid LoRA alpha 'lora_alpha': must be a positive number, got {lora_alpha!r}"
+        )
+
+    # 5. LoRA dropout lora_dropout (must be in interval [0, 1), not boolean)
+    lora_dropout = getattr(lora_cfg, "lora_dropout", 0.05)
+    if (
+        isinstance(lora_dropout, bool)
+        or not isinstance(lora_dropout, (int, float))
+        or not (0.0 <= lora_dropout < 1.0)
+    ):
+        raise ValueError(
+            f"Invalid LoRA dropout 'lora_dropout': must be in the interval [0, 1), got {lora_dropout!r}"
+        )
+
+    # 6. use_rslora (must be boolean)
+    use_rslora = getattr(lora_cfg, "use_rslora", False)
+    if not isinstance(use_rslora, bool):
+        raise ValueError(
+            f"Invalid rsLoRA flag 'use_rslora': must be a boolean (True or False), got {use_rslora!r} ({type(use_rslora).__name__})"
+        )
+
+    # 7. target_modules (must be non-empty string or non-empty sequence of non-empty strings)
+    target_modules = getattr(lora_cfg, "target_modules", "all-linear")
+    if target_modules is None:
+        raise ValueError(
+            "Invalid LoRA target modules 'target_modules': cannot be None. Must be a non-empty string or non-empty list of module names."
+        )
+    if isinstance(target_modules, str):
+        if not target_modules.strip():
+            raise ValueError(
+                "Invalid LoRA target modules 'target_modules': string cannot be empty."
+            )
+    elif isinstance(target_modules, (list, tuple, Sequence)):
+        if len(target_modules) == 0:
+            raise ValueError("Invalid LoRA target modules 'target_modules': list cannot be empty.")
+        for item in target_modules:
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError(
+                    f"Invalid module name in target_modules: expected non-empty string, got {item!r}"
+                )
+    else:
+        raise ValueError(
+            f"Invalid LoRA target modules 'target_modules': must be a string or list of strings, got {type(target_modules).__name__}"
+        )
+
+    # 8. bias (must be one of 'none', 'all', 'lora_only')
+    bias = getattr(lora_cfg, "bias", "none")
+    if bias not in ("none", "all", "lora_only"):
+        raise ValueError(
+            f"Invalid LoRA bias setting 'bias': must be one of ('none', 'all', 'lora_only'), got {bias!r}"
+        )
+
+    # 9. modules_to_save (null or sequence of non-empty strings)
+    modules_to_save = getattr(lora_cfg, "modules_to_save", None)
+    if modules_to_save is not None:
+        if not isinstance(modules_to_save, (list, tuple, Sequence)) or isinstance(
+            modules_to_save, str
+        ):
+            raise ValueError(
+                f"Invalid modules_to_save: must be None or a list of module names, got {type(modules_to_save).__name__}"
+            )
+        for item in modules_to_save:
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError(
+                    f"Invalid module name in modules_to_save: expected non-empty string, got {item!r}"
+                )
+
+
 class SFTWarmupPipeline:
-    """Orchestrates Supervised Fine-Tuning with LoRA for SQL translation policies."""
+    """Orchestrates Supervised Fine-Tuning with LoRA / rsLoRA for SQL translation policies."""
 
     def __init__(self, config: DictConfig) -> None:
         """Initialize SFT pipeline with Hydra configuration.
@@ -39,42 +162,165 @@ class SFTWarmupPipeline:
         self.cfg = config
         self.output_dir = Path(getattr(config.training, "output_dir", "models/sft/final"))
 
-    def build_lora_config(self) -> LoraConfig:
-        """Build PEFT LoRA configuration targeting linear projection layers."""
+    def build_lora_config(self) -> LoraConfig | None:
+        """Build PEFT LoRA configuration dynamically from configuration.
+
+        Constructs either Standard LoRA (use_rslora=False) or Rank-Stabilized LoRA
+        (use_rslora=True) based on Hydra configuration. Returns None if LoRA is disabled.
+
+        Returns:
+            LoraConfig if LoRA is enabled, or None if LoRA is disabled (full fine-tuning).
+        """
         lora_cfg = getattr(self.cfg.training, "lora", None)
-        r = int(getattr(lora_cfg, "r", 16)) if lora_cfg else 16
-        lora_alpha = int(getattr(lora_cfg, "lora_alpha", 32)) if lora_cfg else 32
-        lora_dropout = float(getattr(lora_cfg, "lora_dropout", 0.05)) if lora_cfg else 0.05
-        bias_val = str(getattr(lora_cfg, "bias", "none")) if lora_cfg else "none"
-        if bias_val not in ("none", "all", "lora_only"):
-            bias_val = "none"
+        if lora_cfg is None:
+            logger.info(
+                "No explicit 'lora' section found in config; defaulting to Standard LoRA (r=16, alpha=32)."
+            )
+            return LoraConfig(
+                r=16,
+                lora_alpha=32,
+                lora_dropout=0.05,
+                bias="none",
+                target_modules="all-linear",
+                use_rslora=False,
+                task_type=TaskType.CAUSAL_LM,
+            )
+
+        validate_lora_config(lora_cfg)
+
+        enabled = bool(getattr(lora_cfg, "enabled", True))
+        if not enabled:
+            logger.info(
+                "LoRA adapter training is disabled (enabled=False). Running full fine-tuning."
+            )
+            return None
+
+        r = int(getattr(lora_cfg, "r", 16))
+        lora_alpha: int = int(getattr(lora_cfg, "lora_alpha", 32))
+        lora_dropout = float(getattr(lora_cfg, "lora_dropout", 0.05))
+        use_rslora = bool(getattr(lora_cfg, "use_rslora", False))
+
+        target_modules_raw = getattr(lora_cfg, "target_modules", "all-linear")
+        if isinstance(target_modules_raw, str):
+            target_modules: str | list[str] = target_modules_raw
+        else:
+            target_modules = list(target_modules_raw)
+
+        bias_val = str(getattr(lora_cfg, "bias", "none"))
         bias: Literal["none", "all", "lora_only"] = cast(
             Literal["none", "all", "lora_only"], bias_val
         )
-        target_modules = list(
-            getattr(
-                lora_cfg,
-                "target_modules",
-                [
-                    "q_proj",
-                    "k_proj",
-                    "v_proj",
-                    "o_proj",
-                    "gate_proj",
-                    "up_proj",
-                    "down_proj",
-                ],
-            )
-        )
+
+        modules_to_save_raw = getattr(lora_cfg, "modules_to_save", None)
+        modules_to_save = list(modules_to_save_raw) if modules_to_save_raw is not None else None
+
+        init_lora_weights = getattr(lora_cfg, "init_lora_weights", True)
 
         return LoraConfig(
             r=r,
             lora_alpha=lora_alpha,
             lora_dropout=lora_dropout,
-            bias=bias,
             target_modules=target_modules,
+            bias=bias,
+            modules_to_save=modules_to_save,
+            init_lora_weights=init_lora_weights,
+            use_rslora=use_rslora,
             task_type=TaskType.CAUSAL_LM,
         )
+
+    @staticmethod
+    def get_lora_metadata(lora_cfg: LoraConfig | None) -> dict[str, Any]:
+        """Extract structured metadata distinguishing standard_lora, rslora, and full_finetuning.
+
+        Calculates effective scaling factor:
+          Standard LoRA : s = alpha / r
+          rsLoRA        : s = alpha / sqrt(r)
+        """
+        if lora_cfg is None:
+            return {
+                "lora_enabled": False,
+                "lora_type": "full_finetuning",
+                "r": None,
+                "lora_alpha": None,
+                "scaling_factor": None,
+                "lora_dropout": None,
+                "target_modules": None,
+                "bias": None,
+                "use_rslora": False,
+                "init_lora_weights": None,
+                "modules_to_save": None,
+            }
+
+        is_rslora = bool(getattr(lora_cfg, "use_rslora", False))
+        r = int(lora_cfg.r)
+        alpha = float(lora_cfg.lora_alpha)
+        scaling = (alpha / (r**0.5)) if is_rslora else (alpha / r)
+
+        target_modules: Any = lora_cfg.target_modules
+        if isinstance(target_modules, set):
+            target_modules = sorted(target_modules)
+        elif isinstance(target_modules, (list, tuple)):
+            target_modules = list(target_modules)
+
+        modules_to_save: Any = lora_cfg.modules_to_save
+        if isinstance(modules_to_save, (list, tuple)):
+            modules_to_save = list(modules_to_save)
+
+        return {
+            "lora_enabled": True,
+            "lora_type": "rslora" if is_rslora else "standard_lora",
+            "r": r,
+            "lora_alpha": alpha if not alpha.is_integer() else int(alpha),
+            "scaling_factor": round(float(scaling), 6),
+            "lora_dropout": float(lora_cfg.lora_dropout),
+            "target_modules": target_modules,
+            "bias": str(lora_cfg.bias),
+            "use_rslora": is_rslora,
+            "init_lora_weights": getattr(lora_cfg, "init_lora_weights", True),
+            "modules_to_save": modules_to_save,
+        }
+
+    def log_effective_lora_config(self, lora_cfg: LoraConfig | None) -> dict[str, Any]:
+        """Log the complete effective LoRA configuration at the beginning of each SFT run."""
+        metadata = self.get_lora_metadata(lora_cfg)
+        logger.info(
+            "================================================================================\n"
+            "Effective LoRA / PEFT Configuration:\n"
+            "  • Enabled          : %s\n"
+            "  • Architecture     : %s\n"
+            "  • Rank (r)         : %s\n"
+            "  • Alpha            : %s\n"
+            "  • Scaling Factor   : %s\n"
+            "  • Dropout          : %s\n"
+            "  • Target Modules   : %s\n"
+            "  • Bias             : %s\n"
+            "  • use_rslora       : %s\n"
+            "  • Init Weights     : %s\n"
+            "  • Modules to Save  : %s\n"
+            "================================================================================",
+            metadata["lora_enabled"],
+            metadata["lora_type"],
+            metadata["r"],
+            metadata["lora_alpha"],
+            metadata["scaling_factor"],
+            metadata["lora_dropout"],
+            metadata["target_modules"],
+            metadata["bias"],
+            metadata["use_rslora"],
+            metadata["init_lora_weights"],
+            metadata["modules_to_save"],
+        )
+        return metadata
+
+    def save_lora_metadata(self, output_dir: Path, metadata: dict[str, Any]) -> Path:
+        """Preserve effective LoRA configuration alongside training outputs and artifacts."""
+        output_dir.mkdir(parents=True, exist_ok=True)
+        meta_file = output_dir / "lora_metadata.json"
+        meta_file.write_text(json.dumps(metadata, indent=2) + "\n")
+        (output_dir / "effective_lora_config.json").write_text(
+            json.dumps(metadata, indent=2) + "\n"
+        )
+        return meta_file
 
     def build_training_args(self, output_dir: str | Path | None = None) -> SFTConfig:
         """Construct Hugging Face SFTConfig / TrainingArguments."""
@@ -85,7 +331,7 @@ class SFTWarmupPipeline:
         is_cuda = torch.cuda.is_available()
         bf16_requested = bool(getattr(training_cfg, "bf16", False))
         bf16 = bf16_requested and is_cuda and torch.cuda.is_bf16_supported()
-        fp16 = not bf16 and is_cuda
+        fp16 = bool(getattr(training_cfg, "fp16", False)) or (not bf16 and is_cuda)
 
         max_steps = int(getattr(training_cfg, "max_steps", -1))
         epochs = float(getattr(training_cfg, "num_train_epochs", 3))
@@ -172,7 +418,7 @@ class SFTWarmupPipeline:
         train_dataset: Dataset | None = None,
         eval_dataset: Dataset | None = None,
     ) -> Path:
-        """Execute SFT training and save LoRA checkpoint.
+        """Execute SFT training and save model checkpoint.
 
         Args:
             model: Optional preloaded model (e.g. for testing).
@@ -214,25 +460,46 @@ class SFTWarmupPipeline:
             model = self.load_model(model_name)
 
         lora_config = self.build_lora_config()
-        peft_model: Any = get_peft_model(model, lora_config)
-        if hasattr(peft_model, "print_trainable_parameters"):
-            peft_model.print_trainable_parameters()
+        lora_meta = self.log_effective_lora_config(lora_config)
+        self.save_lora_metadata(output_dir, lora_meta)
 
         training_args = self.build_training_args(output_dir)
 
+        # Update Weights & Biases configuration if telemetry active
+        wandb_cfg = getattr(self.cfg.training, "wandb", None)
+        if wandb_cfg and getattr(wandb_cfg, "enabled", False):
+            try:
+                import wandb
+
+                if wandb.run is not None:
+                    wandb.run.config.update({"peft": lora_meta}, allow_val_change=True)  # type: ignore[no-untyped-call]
+            except Exception as e:
+                logger.debug("W&B telemetry update skipped: %s", e)
+
+        # Delegate PEFT wrapping to SFTTrainer via peft_config argument.
+        # If model is already a PeftModel instance (e.g. in test mock), pass peft_config=None.
+        peft_cfg_for_trainer = lora_config if not isinstance(model, PeftModel) else None
+
         trainer = SFTTrainer(
-            model=peft_model,
+            model=model,
+            peft_config=peft_cfg_for_trainer,
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             processing_class=tokenizer,
         )
 
+        if trainer.model is not None:
+            print_fn = getattr(trainer.model, "print_trainable_parameters", None)
+            if callable(print_fn):
+                print_fn()
+
         logger.info("Starting SFT training run...")
         trainer.train()
 
-        logger.info("Saving SFT adapter checkpoint to %s", output_dir)
+        logger.info("Saving SFT checkpoint to %s", output_dir)
         trainer.save_model(str(output_dir))
         tokenizer.save_pretrained(str(output_dir))
+        self.save_lora_metadata(output_dir, lora_meta)
 
         return output_dir

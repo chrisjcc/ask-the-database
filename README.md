@@ -176,8 +176,12 @@ make prepare-spider2-sqlite
 Train models across all five alignment stages:
 
 ```bash
-# Condition 2: Conventional SFT Baseline (Single-turn gold pairs)
+# Condition 2: Conventional SFT Baseline (Standard LoRA or Rank-Stabilized rsLoRA)
 make train-sft
+
+# Optional: Enable Rank-Stabilized LoRA (rsLoRA, s = alpha / sqrt(r)) via CLI override:
+# make train-sft ARGS="training.lora.use_rslora=true training.lora.r=32 training.lora.lora_alpha=64"
+# (See docs/lora_rslora_sft_guide.md for comprehensive details)
 
 # Condition 3: Filtered Rollouts (Rejection sampling)
 make train-filtered

@@ -1,5 +1,6 @@
 """CLI entrypoint for Supervised Fine-Tuning (SFT) Warmup of text-to-SQL policies."""
 
+import json
 import logging
 from pathlib import Path
 
@@ -45,12 +46,18 @@ def main(cfg: DictConfig) -> None:
             logger.info("Loaded dry-run validation samples: %d", len(val_ds))
 
         lora_cfg = pipeline.build_lora_config()
-        logger.info(
-            "Validated LoRA config: target_modules=%s, r=%d, alpha=%d",
-            lora_cfg.target_modules,
-            lora_cfg.r,
-            lora_cfg.lora_alpha,
-        )
+        lora_meta = pipeline.log_effective_lora_config(lora_cfg)
+        if lora_cfg is not None:
+            logger.info(
+                "Validated LoRA config: architecture=%s, target_modules=%s, r=%d, alpha=%s, use_rslora=%s",
+                lora_meta["lora_type"],
+                lora_cfg.target_modules,
+                lora_cfg.r,
+                lora_cfg.lora_alpha,
+                getattr(lora_cfg, "use_rslora", False),
+            )
+        else:
+            logger.info("Validated configuration: LoRA disabled (full fine-tuning mode).")
 
         training_args = pipeline.build_training_args()
         logger.info("Validated SFTConfig output_dir: %s", training_args.output_dir)
@@ -58,8 +65,28 @@ def main(cfg: DictConfig) -> None:
         # Ensure output directory exists for DVC / workflow tracking
         out_dir = Path(training_args.output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "adapter_config.json").write_text('{"peft_type": "LORA", "dry_run": true}\n')
-        (out_dir / "adapter_model.safetensors").touch()
+        pipeline.save_lora_metadata(out_dir, lora_meta)
+
+        if lora_cfg is not None:
+            target_mods = (
+                list(lora_cfg.target_modules)
+                if isinstance(lora_cfg.target_modules, (set, list))
+                else lora_cfg.target_modules
+            )
+            adapter_info = {
+                "peft_type": "LORA",
+                "r": lora_cfg.r,
+                "lora_alpha": lora_cfg.lora_alpha,
+                "lora_dropout": lora_cfg.lora_dropout,
+                "target_modules": target_mods,
+                "bias": lora_cfg.bias,
+                "use_rslora": getattr(lora_cfg, "use_rslora", False),
+                "dry_run": True,
+            }
+            (out_dir / "adapter_config.json").write_text(json.dumps(adapter_info, indent=2) + "\n")
+            (out_dir / "adapter_model.safetensors").touch()
+        else:
+            (out_dir / "config.json").write_text('{"full_finetuning": true, "dry_run": true}\n')
         logger.info("Dry-run completed successfully.")
         return
 
