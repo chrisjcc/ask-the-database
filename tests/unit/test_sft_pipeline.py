@@ -1033,7 +1033,9 @@ def test_robust_sft_trainer_clamps_n_gpu_in_single_process(tmp_path: Path) -> No
     """Verify RobustSFTTrainer clamps n_gpu to 1 in single process to prevent nn.DataParallel error in TRL."""
     from trl.trainer.sft_config import SFTConfig
 
-    training_args = SFTConfig(output_dir=str(tmp_path / "out"))
+    training_args = SFTConfig(
+        output_dir=str(tmp_path / "out"), bf16=False, fp16=False, use_cpu=True
+    )
     training_args._n_gpu = 2
 
     mock_model = MagicMock()
