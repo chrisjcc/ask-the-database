@@ -1052,6 +1052,12 @@ def test_robust_sft_trainer_clamps_n_gpu_in_single_process(tmp_path: Path) -> No
         assert training_args.n_gpu == 1
         mock_super_init.assert_called_once()
 
+        # Verify training_args can be serialized by torch.save without PicklingError
+        ckpt_file = tmp_path / "trainer_args.bin"
+        torch.save(training_args, ckpt_file)
+        loaded = torch.load(ckpt_file, weights_only=False)
+        assert loaded.n_gpu == 1
+
 
 def test_build_training_args_clamps_n_gpu(tmp_path: Path) -> None:
     """Verify build_training_args constructs SFTConfig with clamped n_gpu in single process mode."""
@@ -1135,3 +1141,36 @@ def test_build_training_args_precision_resolution(tmp_path: Path) -> None:
         _, kwargs = mock_sft_config.call_args
         assert kwargs["bf16"] is False
         assert kwargs["fp16"] is True
+
+
+def test_single_device_sft_config_serialization_and_checkpoint_saving(tmp_path: Path) -> None:
+    """Verify SingleDeviceSFTConfig can be pickled and saved with torch.save without PicklingError."""
+    import pickle
+
+    from ask_the_database.training.sft_trainer import SingleDeviceSFTConfig
+
+    cfg = OmegaConf.create(
+        {
+            "training": {
+                "output_dir": str(tmp_path / "out"),
+                "learning_rate": 2e-5,
+            },
+            "model": {},
+        }
+    )
+    pipeline = SFTWarmupPipeline(cfg)
+    with patch.dict("os.environ", {"WORLD_SIZE": "1", "LOCAL_RANK": "-1"}, clear=False):
+        args = pipeline.build_training_args()
+        assert issubclass(args.__class__, SingleDeviceSFTConfig)
+        assert args.n_gpu == 1
+
+        # Test pickle serialization
+        pickled_bytes = pickle.dumps(args)
+        unpickled_args = pickle.loads(pickled_bytes)
+        assert unpickled_args.n_gpu == 1
+
+        # Test PyTorch torch.save / torch.load (used by Trainer._save_checkpoint)
+        ckpt_path = tmp_path / "training_args.bin"
+        torch.save(args, ckpt_path)
+        loaded_args = torch.load(ckpt_path, weights_only=False)
+        assert loaded_args.n_gpu == 1
