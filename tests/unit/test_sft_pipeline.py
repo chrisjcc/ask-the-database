@@ -1089,17 +1089,49 @@ def test_build_training_args_precision_resolution(tmp_path: Path) -> None:
     with (
         patch("ask_the_database.training.sft_trainer._is_bf16_supported", return_value=True),
         patch("ask_the_database.training.sft_trainer.torch.cuda.is_available", return_value=True),
-        patch("transformers.training_args.is_torch_bf16_gpu_available", return_value=True),
+        patch("ask_the_database.training.sft_trainer.SFTConfig") as mock_sft_config,
     ):
-        args = pipeline.build_training_args()
-        assert args.bf16 is True
-        assert args.fp16 is False
+        mock_instance = MagicMock()
+        mock_sft_config.return_value = mock_instance
+        pipeline.build_training_args()
+        _, kwargs = mock_sft_config.call_args
+        assert kwargs["bf16"] is True
+        assert kwargs["fp16"] is False
 
     # When on CPU (no bf16 supported), both must be False
     with (
         patch("ask_the_database.training.sft_trainer._is_bf16_supported", return_value=False),
         patch("ask_the_database.training.sft_trainer.torch.cuda.is_available", return_value=False),
+        patch("ask_the_database.training.sft_trainer.SFTConfig") as mock_sft_config,
     ):
-        args_cpu = pipeline.build_training_args()
-        assert args_cpu.bf16 is False
-        assert args_cpu.fp16 is False
+        mock_instance = MagicMock()
+        mock_sft_config.return_value = mock_instance
+        pipeline.build_training_args()
+        _, kwargs = mock_sft_config.call_args
+        assert kwargs["bf16"] is False
+        assert kwargs["fp16"] is False
+
+    # When fp16 is explicitly requested, fp16 must be True and bf16 False
+    cfg_fp16 = OmegaConf.create(
+        {
+            "training": {
+                "output_dir": str(tmp_path / "out"),
+                "learning_rate": 2e-5,
+                "bf16": False,
+                "fp16": True,
+            },
+            "model": {},
+        }
+    )
+    pipeline_fp16 = SFTWarmupPipeline(cfg_fp16)
+    with (
+        patch("ask_the_database.training.sft_trainer._is_bf16_supported", return_value=True),
+        patch("ask_the_database.training.sft_trainer.torch.cuda.is_available", return_value=True),
+        patch("ask_the_database.training.sft_trainer.SFTConfig") as mock_sft_config,
+    ):
+        mock_instance = MagicMock()
+        mock_sft_config.return_value = mock_instance
+        pipeline_fp16.build_training_args()
+        _, kwargs = mock_sft_config.call_args
+        assert kwargs["bf16"] is False
+        assert kwargs["fp16"] is True
