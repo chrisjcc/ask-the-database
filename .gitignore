@@ -221,7 +221,6 @@ __marimo__/
 
 # Project Artifacts and Hydra outputs
 /data/*
-!/data/fixtures/
 /outputs/
 /multirun/
 /models/
