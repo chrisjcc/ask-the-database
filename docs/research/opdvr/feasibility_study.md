@@ -59,7 +59,7 @@ Large language model post-training has increasingly bifurcated into two dominant
 │   Verifiable Rewards (RLVR)              │   (OPD)                                     │
 ├──────────────────────────────────────────┼─────────────────────────────────────────────┤
 │ • Objective: Maximize expected reward    │ • Objective: Minimize reverse KL divergence │
-│   $\mathbb{E}_{o \sim \pi_\theta}[R(o)]$ │   $D_{\mathrm{KL}}(\pi_\theta \| \pi_T)$   │
+│   $\mathbb{E}_{o \sim \pi_\theta}[R(o)]$ │   $D_{\mathrm{KL}}(\pi_\theta \| \pi_T)$    │
 │ • Supervision: Sparse, trajectory-level  │ • Supervision: Dense, token-level log-ratio │
 │ • Credit Assignment: Challenging (all    │ • Distributional: Mimics teacher blindly,   │
 │   tokens share trajectory scalar)        │   agnostic to ground-truth correctness      │
