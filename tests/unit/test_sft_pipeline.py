@@ -1068,3 +1068,38 @@ def test_build_training_args_clamps_n_gpu(tmp_path: Path) -> None:
     with patch.dict("os.environ", {"WORLD_SIZE": "1", "LOCAL_RANK": "-1"}, clear=False):
         args = pipeline.build_training_args()
         assert args.n_gpu == 1
+
+
+def test_build_training_args_precision_resolution(tmp_path: Path) -> None:
+    """Verify build_training_args prefers bf16 on Ampere+ and avoids GradScaler conflict."""
+    cfg = OmegaConf.create(
+        {
+            "training": {
+                "output_dir": str(tmp_path / "out"),
+                "learning_rate": 2e-5,
+                "bf16": True,
+                "fp16": False,
+            },
+            "model": {},
+        }
+    )
+    pipeline = SFTWarmupPipeline(cfg)
+
+    # When bf16 is supported on CUDA, bf16 must be True and fp16 must be False
+    with (
+        patch("ask_the_database.training.sft_trainer._is_bf16_supported", return_value=True),
+        patch("ask_the_database.training.sft_trainer.torch.cuda.is_available", return_value=True),
+        patch("transformers.training_args.is_torch_bf16_gpu_available", return_value=True),
+    ):
+        args = pipeline.build_training_args()
+        assert args.bf16 is True
+        assert args.fp16 is False
+
+    # When on CPU (no bf16 supported), both must be False
+    with (
+        patch("ask_the_database.training.sft_trainer._is_bf16_supported", return_value=False),
+        patch("ask_the_database.training.sft_trainer.torch.cuda.is_available", return_value=False),
+    ):
+        args_cpu = pipeline.build_training_args()
+        assert args_cpu.bf16 is False
+        assert args_cpu.fp16 is False

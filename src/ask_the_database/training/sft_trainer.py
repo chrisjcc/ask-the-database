@@ -569,11 +569,25 @@ class SFTWarmupPipeline:
         out_dir = str(output_dir or self.output_dir)
         training_cfg = self.cfg.training
 
-        # Detect compute capabilities defensively
+        # Precision detection:
+        # Default to bf16 if supported by hardware (Ampere+, A100, H100) or requested in config.
+        # GradScaler is only enabled for fp16; passing fp16 with bfloat16 weights/gradients causes
+        # PyTorch to crash with NotImplementedError ("_amp_foreach_non_finite_check_and_unscale_cuda" not implemented for 'BFloat16').
         is_cuda = torch.cuda.is_available()
-        bf16_requested = bool(getattr(training_cfg, "bf16", False))
-        bf16 = bf16_requested and is_cuda and torch.cuda.is_bf16_supported()
-        fp16 = bool(getattr(training_cfg, "fp16", False)) or (not bf16 and is_cuda)
+        cuda_bf16 = _is_bf16_supported()
+
+        bf16_cfg = getattr(training_cfg, "bf16", None)
+        fp16_cfg = getattr(training_cfg, "fp16", None)
+
+        if fp16_cfg is True:
+            bf16 = False
+            fp16 = is_cuda
+        elif bf16_cfg is True or (bf16_cfg is not False and cuda_bf16):
+            bf16 = cuda_bf16
+            fp16 = False
+        else:
+            bf16 = False
+            fp16 = bool(fp16_cfg) and is_cuda
 
         max_steps = int(getattr(training_cfg, "max_steps", -1))
         epochs = float(getattr(training_cfg, "num_train_epochs", 3))

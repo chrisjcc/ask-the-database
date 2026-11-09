@@ -21,7 +21,7 @@ max_steps: -1                              # Max training steps (-1 uses num_tra
 learning_rate: 2.0e-5                      # Peak learning rate (AdamW)
 warmup_steps: 10                           # Warmup steps for cosine learning rate schedule
 weight_decay: 0.01                         # Weight decay regularization
-bf16: false                                # Use bfloat16 precision (auto-detected on Ampere+)
+bf16: true                                 # Use bfloat16 precision (recommended on Ampere+ GPUs, auto-fallback on CPU/older GPUs)
 fp16: false                                # Use float16 precision if bf16 is not supported
 max_seq_length: 2048                       # Maximum token sequence length for ChatML prompts
 
