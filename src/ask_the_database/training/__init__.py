@@ -8,6 +8,13 @@ from ask_the_database.training.dataset import (
     format_prompt_for_generation,
     load_sft_dataset,
 )
+from ask_the_database.training.losses import (
+    GRPDLoss,
+    OPDVRLoss,
+    compute_conflict_diagnostics,
+    compute_grpd_token_rewards,
+    compute_opdvr_token_rewards,
+)
 
 try:
     from ask_the_database.training.adapters.trl_grpo import (
@@ -31,4 +38,9 @@ __all__ = [
     "format_prompt_for_generation",
     "load_sft_dataset",
     "SFTWarmupPipeline",
+    "GRPDLoss",
+    "OPDVRLoss",
+    "compute_grpd_token_rewards",
+    "compute_opdvr_token_rewards",
+    "compute_conflict_diagnostics",
 ]
