@@ -1,7 +1,19 @@
 """CLI entrypoint for Supervised Fine-Tuning (SFT) Warmup of text-to-SQL policies."""
 
+import json
 import logging
+import os
 from pathlib import Path
+
+# Auto-configure CUDA_VISIBLE_DEVICES for single-process training on multi-GPU servers:
+# When executing directly without a distributed runner (accelerate/torchrun), default to GPU 0
+# if CUDA_VISIBLE_DEVICES is not explicitly defined in the environment. This prevents Hugging Face
+# Trainer from detecting multiple GPUs and attempting unsupported torch.nn.DataParallel.
+if "CUDA_VISIBLE_DEVICES" not in os.environ:
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "-1"))
+    if world_size <= 1 and local_rank == -1:
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -45,21 +57,47 @@ def main(cfg: DictConfig) -> None:
             logger.info("Loaded dry-run validation samples: %d", len(val_ds))
 
         lora_cfg = pipeline.build_lora_config()
-        logger.info(
-            "Validated LoRA config: target_modules=%s, r=%d, alpha=%d",
-            lora_cfg.target_modules,
-            lora_cfg.r,
-            lora_cfg.lora_alpha,
-        )
+        lora_meta = pipeline.log_effective_lora_config(lora_cfg)
+        if lora_cfg is not None:
+            logger.info(
+                "Validated LoRA config: architecture=%s, target_modules=%s, r=%d, alpha=%s, use_rslora=%s",
+                lora_meta["lora_type"],
+                lora_cfg.target_modules,
+                lora_cfg.r,
+                lora_cfg.lora_alpha,
+                getattr(lora_cfg, "use_rslora", False),
+            )
+        else:
+            logger.info("Validated configuration: LoRA disabled (full fine-tuning mode).")
 
         training_args = pipeline.build_training_args()
         logger.info("Validated SFTConfig output_dir: %s", training_args.output_dir)
 
         # Ensure output directory exists for DVC / workflow tracking
-        out_dir = Path(training_args.output_dir)
+        out_dir = Path(training_args.output_dir or "models/sft/final")
         out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "adapter_config.json").write_text('{"peft_type": "LORA", "dry_run": true}\n')
-        (out_dir / "adapter_model.safetensors").touch()
+        pipeline.save_lora_metadata(out_dir, lora_meta)
+
+        if lora_cfg is not None:
+            target_mods = (
+                list(lora_cfg.target_modules)
+                if isinstance(lora_cfg.target_modules, (set, list))
+                else lora_cfg.target_modules
+            )
+            adapter_info = {
+                "peft_type": "LORA",
+                "r": lora_cfg.r,
+                "lora_alpha": lora_cfg.lora_alpha,
+                "lora_dropout": lora_cfg.lora_dropout,
+                "target_modules": target_mods,
+                "bias": lora_cfg.bias,
+                "use_rslora": getattr(lora_cfg, "use_rslora", False),
+                "dry_run": True,
+            }
+            (out_dir / "adapter_config.json").write_text(json.dumps(adapter_info, indent=2) + "\n")
+            (out_dir / "adapter_model.safetensors").touch()
+        else:
+            (out_dir / "config.json").write_text('{"full_finetuning": true, "dry_run": true}\n')
         logger.info("Dry-run completed successfully.")
         return
 

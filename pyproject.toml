@@ -30,6 +30,7 @@ training = [
     "peft>=0.10.0",
     "trl>=0.8.0",
     "accelerate>=0.28.0",
+    "bitsandbytes>=0.43.0",
     "wandb>=0.16.0",
 ]
 ui = [
@@ -51,6 +52,7 @@ all = [
     "peft>=0.10.0",
     "trl>=0.8.0",
     "accelerate>=0.28.0",
+    "bitsandbytes>=0.43.0",
     "wandb>=0.16.0",
     "streamlit>=1.32.0",
     "pandas>=2.0.0",
@@ -62,6 +64,7 @@ all = [
     "types-tqdm",
     "types-requests"
 ]
+
 
 [tool.setuptools.packages.find]
 where = ["src"]
