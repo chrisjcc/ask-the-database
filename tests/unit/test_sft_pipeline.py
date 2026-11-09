@@ -1027,3 +1027,42 @@ def test_robust_sft_trainer_reraises_other_errors() -> None:
         pytest.raises(RuntimeError, match="CUDA out of memory"),
     ):
         trainer.compute_loss(mock_model, mock_inputs, num_items_in_batch=16)
+
+
+def test_robust_sft_trainer_clamps_n_gpu_in_single_process(tmp_path: Path) -> None:
+    """Verify RobustSFTTrainer clamps n_gpu to 1 in single process to prevent nn.DataParallel error in TRL."""
+    from trl.trainer.sft_config import SFTConfig
+
+    training_args = SFTConfig(output_dir=str(tmp_path / "out"))
+    training_args._n_gpu = 2
+
+    mock_model = MagicMock()
+    mock_model.config = MagicMock()
+    mock_model.parameters.return_value = [torch.tensor([1.0])]
+
+    with (
+        patch.object(
+            RobustSFTTrainer.__bases__[0], "__init__", return_value=None
+        ) as mock_super_init,
+        patch.dict("os.environ", {"WORLD_SIZE": "1", "LOCAL_RANK": "-1"}, clear=False),
+    ):
+        RobustSFTTrainer(model=mock_model, args=training_args)
+        assert training_args.n_gpu == 1
+        mock_super_init.assert_called_once()
+
+
+def test_build_training_args_clamps_n_gpu(tmp_path: Path) -> None:
+    """Verify build_training_args constructs SFTConfig with clamped n_gpu in single process mode."""
+    cfg = OmegaConf.create(
+        {
+            "training": {
+                "output_dir": str(tmp_path / "out"),
+                "learning_rate": 2e-5,
+            },
+            "model": {},
+        }
+    )
+    pipeline = SFTWarmupPipeline(cfg)
+    with patch.dict("os.environ", {"WORLD_SIZE": "1", "LOCAL_RANK": "-1"}, clear=False):
+        args = pipeline.build_training_args()
+        assert args.n_gpu == 1

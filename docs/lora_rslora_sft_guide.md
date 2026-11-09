@@ -212,14 +212,17 @@ RuntimeError: Expected all tensors to be on the same device, but found at least 
 
 1. **Single-Device Process Mapping**:
    The SFT pipeline automatically detects available GPUs and maps the model to `{"": local_rank}` (or `{"": current_device}`), preventing naive layer splitting across GPUs during training.
-2. **`RobustSFTTrainer`**:
-   Subclasses `SFTTrainer` to defensively trap any cross-device tensor mismatches and gracefully fall back to local per-device loss normalization if multi-GPU model sharding is explicitly forced.
-3. **Explicit Device Map Overrides**:
+2. **`RobustSFTTrainer` Multi-GPU Safeguards**:
+   - **`nn.DataParallel` Prevention**: When several GPUs are visible to a single process without a distributed runner (`accelerate`/`torchrun`), standard Hugging Face `Trainer` attempts to wrap models in `torch.nn.DataParallel`, which TRL explicitly forbids (`ValueError: SFTTrainer does not support nn.DataParallel...`). `RobustSFTTrainer` automatically clamps `n_gpu` to 1 in single-process mode, avoiding the `nn.DataParallel` trap.
+   - **Cross-Device Recovery**: Defensively traps any cross-device tensor mismatches during `compute_loss()` and gracefully falls back to local per-device loss normalization if multi-GPU model sharding is explicitly forced.
+3. **Environment & Makefile Defaults**:
+   The `Makefile` targets (`make train-sft`, `make train-filtered`, `make train-harness-zero`) and `scripts/train_sft.py` default `CUDA_VISIBLE_DEVICES` to `0` when executing in single-process mode on multi-GPU hosts, ensuring clean device visibility out of the box.
+4. **Explicit Device Map Overrides**:
    You can override device targeting via Hydra configuration:
    ```bash
    make train-sft ARGS="training.device_map='cuda:0'"
    ```
-4. **Distributed Training (DDP via Accelerate)**:
+5. **Distributed Training (DDP via Accelerate)**:
    For multi-GPU data parallelism across all GPUs:
    ```bash
    accelerate launch --num_processes=2 scripts/train_sft.py training.lora.use_rslora=true

@@ -251,12 +251,44 @@ def validate_quantization_config(quant_cfg: Any) -> None:
 
 
 class RobustSFTTrainer(SFTTrainer):
-    """SFTTrainer subclass ensuring robust loss computation across single- and multi-device configurations.
+    """SFTTrainer subclass ensuring robust execution and loss computation across devices.
 
-    Fixes a known issue in TRL's compute_loss where torch.as_tensor(num_tokens) is created on the default
-    device while model outputs/per_token_loss reside on another device when models are split across GPUs,
-    causing 'RuntimeError: Expected all tensors to be on the same device'.
+    Addresses multi-GPU edge cases in Hugging Face TRL:
+    1. Prevents TRL SFTTrainer from raising ValueError('...does not support nn.DataParallel...')
+       when multiple GPUs are visible in single-process execution, by ensuring n_gpu is clamped to 1.
+    2. Defensively handles cross-device tensor mismatch in compute_loss if model outputs reside
+       on another GPU from the default token accumulation tensor.
     """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """Initialize RobustSFTTrainer with single-process multi-GPU safeguards."""
+        training_args = kwargs.get("args")
+        if training_args is None and len(args) > 1:
+            training_args = args[1]
+
+        world_size = int(os.environ.get("WORLD_SIZE", "1"))
+        local_rank = int(os.environ.get("LOCAL_RANK", "-1"))
+        if world_size <= 1 and local_rank == -1 and training_args is not None:
+            if getattr(training_args, "n_gpu", 1) > 1 or getattr(training_args, "_n_gpu", 1) > 1:
+                logger.info(
+                    "Detected multiple visible GPUs in single-process mode (n_gpu=%s). Clamping n_gpu to 1 "
+                    "to prevent unsupported nn.DataParallel in TRL.",
+                    getattr(training_args, "n_gpu", "unknown"),
+                )
+            try:
+                training_args.__class__ = type(
+                    "SingleDeviceSFTConfig",
+                    (training_args.__class__,),
+                    {"n_gpu": property(lambda self: 1)},
+                )
+            except Exception as exc:
+                logger.debug("Could not rebind __class__ for n_gpu property: %s", exc)
+            training_args._n_gpu = 1
+
+        super().__init__(*args, **kwargs)
+
+        if world_size <= 1 and local_rank == -1 and hasattr(self, "args") and self.args is not None:
+            self.args._n_gpu = 1
 
     def compute_loss(
         self,
@@ -578,7 +610,7 @@ class SFTWarmupPipeline:
 
         max_length = int(getattr(training_cfg, "max_seq_length", 2048))
 
-        return SFTConfig(
+        sft_args = SFTConfig(
             output_dir=out_dir,
             learning_rate=lr,
             num_train_epochs=epochs,
@@ -594,6 +626,21 @@ class SFTWarmupPipeline:
             max_steps=max_steps,
             max_length=max_length,
         )
+
+        world_size = int(os.environ.get("WORLD_SIZE", "1"))
+        local_rank = int(os.environ.get("LOCAL_RANK", "-1"))
+        if world_size <= 1 and local_rank == -1:
+            try:
+                sft_args.__class__ = type(
+                    "SingleDeviceSFTConfig",
+                    (sft_args.__class__,),
+                    {"n_gpu": property(lambda self: 1)},
+                )
+            except Exception as exc:
+                logger.debug("Could not rebind __class__ for n_gpu property on SFTConfig: %s", exc)
+            sft_args._n_gpu = 1
+
+        return sft_args
 
     def load_tokenizer(self, model_name: str) -> PreTrainedTokenizerBase:
         """Load tokenizer and set padding token."""

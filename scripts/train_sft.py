@@ -2,7 +2,18 @@
 
 import json
 import logging
+import os
 from pathlib import Path
+
+# Auto-configure CUDA_VISIBLE_DEVICES for single-process training on multi-GPU servers:
+# When executing directly without a distributed runner (accelerate/torchrun), default to GPU 0
+# if CUDA_VISIBLE_DEVICES is not explicitly defined in the environment. This prevents Hugging Face
+# Trainer from detecting multiple GPUs and attempting unsupported torch.nn.DataParallel.
+if "CUDA_VISIBLE_DEVICES" not in os.environ:
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "-1"))
+    if world_size <= 1 and local_rank == -1:
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -63,7 +74,7 @@ def main(cfg: DictConfig) -> None:
         logger.info("Validated SFTConfig output_dir: %s", training_args.output_dir)
 
         # Ensure output directory exists for DVC / workflow tracking
-        out_dir = Path(training_args.output_dir)
+        out_dir = Path(training_args.output_dir or "models/sft/final")
         out_dir.mkdir(parents=True, exist_ok=True)
         pipeline.save_lora_metadata(out_dir, lora_meta)
 
