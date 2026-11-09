@@ -15,13 +15,15 @@ from typing import Any, Literal, cast
 import torch
 from datasets import Dataset
 from omegaconf import DictConfig
-from peft import LoraConfig, PeftModel, TaskType
+from peft import LoraConfig, PeftModel, TaskType, prepare_model_for_kbit_training
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
+    BitsAndBytesConfig,
     PreTrainedModel,
     PreTrainedTokenizerBase,
 )
+from transformers.utils import is_bitsandbytes_available  # type: ignore[attr-defined]
 from trl.trainer.sft_config import SFTConfig
 from trl.trainer.sft_trainer import SFTTrainer
 
@@ -150,6 +152,137 @@ def validate_lora_config(lora_cfg: Any) -> None:
                 )
 
 
+def _get_cfg_val(cfg: Any, key: str, default: Any = None) -> Any:
+    """Retrieve configuration value supporting both dict and object/DictConfig access."""
+    if cfg is None:
+        return default
+    if isinstance(cfg, dict):
+        return cfg.get(key, default)
+    return getattr(cfg, key, default)
+
+
+def _is_bf16_supported() -> bool:
+    """Safely check if CUDA bf16 is supported without crashing if CUDA is not initialized."""
+    try:
+        return bool(torch.cuda.is_available() and torch.cuda.is_bf16_supported())
+    except Exception:
+        return False
+
+
+def validate_quantization_config(quant_cfg: Any) -> None:
+    """Validate 4-bit / 8-bit QLoRA configuration parameters.
+
+    Ensures configuration compliance with BitsAndBytesConfig specifications prior to model loading.
+    If quantization is disabled (enabled=False), validation is skipped.
+
+    Args:
+        quant_cfg: DictConfig or dictionary containing quantization parameters.
+
+    Raises:
+        ValueError: If parameter values violate bounds, types, or mutual exclusivity.
+        ImportError: If quantization is enabled but bitsandbytes is not installed.
+    """
+    if quant_cfg is None:
+        return
+
+    enabled = _get_cfg_val(quant_cfg, "enabled", False)
+    if isinstance(enabled, str):
+        if enabled.lower() in ("true", "1", "yes"):
+            enabled = True
+        elif enabled.lower() in ("false", "0", "no"):
+            enabled = False
+        else:
+            raise ValueError(
+                f"Invalid quantization 'enabled' flag: must be a boolean, got {enabled!r}"
+            )
+    elif not isinstance(enabled, bool):
+        raise ValueError(
+            f"Invalid quantization 'enabled' flag: must be a boolean, got {enabled!r} ({type(enabled).__name__})"
+        )
+
+    if not enabled:
+        return
+
+    # Check bitsandbytes installation
+    if not is_bitsandbytes_available():
+        raise ImportError(
+            "Quantization is enabled (QLoRA) but 'bitsandbytes' is not installed or available in the environment. "
+            "Please install it using: pip install 'bitsandbytes>=0.43.0'."
+        )
+
+    load_in_4bit = _get_cfg_val(quant_cfg, "load_in_4bit", True)
+    if not isinstance(load_in_4bit, bool):
+        raise ValueError(f"Invalid 'load_in_4bit' flag: must be a boolean, got {load_in_4bit!r}")
+
+    load_in_8bit = _get_cfg_val(quant_cfg, "load_in_8bit", False)
+    if not isinstance(load_in_8bit, bool):
+        raise ValueError(f"Invalid 'load_in_8bit' flag: must be a boolean, got {load_in_8bit!r}")
+
+    if load_in_4bit and load_in_8bit:
+        raise ValueError(
+            "Conflicting quantization settings: cannot set both 'load_in_4bit=True' and 'load_in_8bit=True'. "
+            "Choose either 4-bit (QLoRA) or 8-bit quantization."
+        )
+
+    if not load_in_4bit and not load_in_8bit:
+        raise ValueError(
+            "Quantization is enabled, but neither 'load_in_4bit' nor 'load_in_8bit' is True. "
+            "Set either 'load_in_4bit: true' or 'load_in_8bit: true'."
+        )
+
+    if load_in_4bit:
+        quant_type = str(_get_cfg_val(quant_cfg, "bnb_4bit_quant_type", "nf4")).lower()
+        if quant_type not in ("nf4", "fp4"):
+            raise ValueError(
+                f"Invalid 'bnb_4bit_quant_type': must be 'nf4' or 'fp4', got {quant_type!r}"
+            )
+
+        use_double_quant = _get_cfg_val(quant_cfg, "bnb_4bit_use_double_quant", True)
+        if not isinstance(use_double_quant, bool):
+            raise ValueError(
+                f"Invalid 'bnb_4bit_use_double_quant': must be a boolean, got {use_double_quant!r}"
+            )
+
+        compute_dtype = str(_get_cfg_val(quant_cfg, "bnb_4bit_compute_dtype", "bfloat16")).lower()
+        if compute_dtype not in ("bfloat16", "float16", "float32"):
+            raise ValueError(
+                f"Invalid 'bnb_4bit_compute_dtype': must be one of ('bfloat16', 'float16', 'float32'), got {compute_dtype!r}"
+            )
+
+
+class RobustSFTTrainer(SFTTrainer):
+    """SFTTrainer subclass ensuring robust loss computation across single- and multi-device configurations.
+
+    Fixes a known issue in TRL's compute_loss where torch.as_tensor(num_tokens) is created on the default
+    device while model outputs/per_token_loss reside on another device when models are split across GPUs,
+    causing 'RuntimeError: Expected all tensors to be on the same device'.
+    """
+
+    def compute_loss(
+        self,
+        model: PreTrainedModel | torch.nn.Module,
+        inputs: dict[str, Any],
+        return_outputs: bool = False,
+        num_items_in_batch: Any = None,
+    ) -> Any:
+        """Compute training loss with defensive handling of cross-device tensor splits in TRL."""
+        try:
+            return super().compute_loss(  # type: ignore[no-untyped-call]
+                model, inputs, return_outputs=return_outputs, num_items_in_batch=num_items_in_batch
+            )
+        except RuntimeError as err:
+            if "same device" in str(err) and num_items_in_batch is not None:
+                logger.warning(
+                    "Detected cross-device tensor mismatch in TRL compute_loss (%s). "
+                    "Retrying loss computation with local per-device loss normalization.",
+                    err,
+                )
+                return super().compute_loss(  # type: ignore[no-untyped-call]
+                    model, inputs, return_outputs=return_outputs, num_items_in_batch=None
+                )
+            raise
+
+
 class SFTWarmupPipeline:
     """Orchestrates Supervised Fine-Tuning with LoRA / rsLoRA for SQL translation policies."""
 
@@ -228,18 +361,77 @@ class SFTWarmupPipeline:
             task_type=TaskType.CAUSAL_LM,
         )
 
+    def build_quantization_config(self) -> BitsAndBytesConfig | None:
+        """Build BitsAndBytesConfig dynamically from Hydra configuration.
+
+        Supports 4-bit (QLoRA) and 8-bit quantization. Returns None if quantization is disabled.
+        """
+        quant_cfg = getattr(self.cfg.training, "quantization", None)
+        if quant_cfg is None:
+            quant_cfg = getattr(self.cfg, "quantization", None)
+
+        if quant_cfg is None:
+            return None
+
+        validate_quantization_config(quant_cfg)
+
+        enabled = bool(_get_cfg_val(quant_cfg, "enabled", False))
+        if not enabled:
+            return None
+
+        load_in_8bit = bool(_get_cfg_val(quant_cfg, "load_in_8bit", False))
+
+        if load_in_8bit:
+            return BitsAndBytesConfig(load_in_8bit=True)  # type: ignore[no-untyped-call]
+
+        compute_dtype_str = str(
+            _get_cfg_val(quant_cfg, "bnb_4bit_compute_dtype", "bfloat16")
+        ).lower()
+        compute_dtype = {
+            "bfloat16": torch.bfloat16,
+            "float16": torch.float16,
+            "float32": torch.float32,
+        }.get(compute_dtype_str, torch.bfloat16)
+
+        return BitsAndBytesConfig(  # type: ignore[no-untyped-call]
+            load_in_4bit=True,
+            bnb_4bit_quant_type=str(_get_cfg_val(quant_cfg, "bnb_4bit_quant_type", "nf4")),
+            bnb_4bit_use_double_quant=bool(
+                _get_cfg_val(quant_cfg, "bnb_4bit_use_double_quant", True)
+            ),
+            bnb_4bit_compute_dtype=compute_dtype,
+        )
+
     @staticmethod
-    def get_lora_metadata(lora_cfg: LoraConfig | None) -> dict[str, Any]:
-        """Extract structured metadata distinguishing standard_lora, rslora, and full_finetuning.
+    def get_lora_metadata(lora_cfg: LoraConfig | None, quant_cfg: Any = None) -> dict[str, Any]:
+        """Extract structured metadata distinguishing standard_lora, rslora, qlora, and full_finetuning.
 
         Calculates effective scaling factor:
           Standard LoRA : s = alpha / r
           rsLoRA        : s = alpha / sqrt(r)
         """
+        is_quantized = False
+        quant_type = "none"
+        compute_dtype_str = None
+        if quant_cfg is not None and _get_cfg_val(quant_cfg, "enabled", False):
+            is_quantized = True
+            if _get_cfg_val(quant_cfg, "load_in_8bit", False):
+                quant_type = "8bit"
+            else:
+                bnb_type = str(_get_cfg_val(quant_cfg, "bnb_4bit_quant_type", "nf4")).lower()
+                quant_type = f"4bit_{bnb_type}"
+            compute_dtype_str = str(_get_cfg_val(quant_cfg, "bnb_4bit_compute_dtype", "bfloat16"))
+
         if lora_cfg is None:
+            lora_type = "full_finetuning"
+            if is_quantized:
+                lora_type = "quantized_full_finetuning"
             return {
                 "lora_enabled": False,
-                "lora_type": "full_finetuning",
+                "lora_type": lora_type,
+                "quantization_enabled": is_quantized,
+                "quantization_type": quant_type,
+                "quantization_compute_dtype": compute_dtype_str,
                 "r": None,
                 "lora_alpha": None,
                 "scaling_factor": None,
@@ -266,9 +458,17 @@ class SFTWarmupPipeline:
         if isinstance(modules_to_save, (list, tuple)):
             modules_to_save = list(modules_to_save)
 
+        if is_quantized:
+            lora_type = "qlora_rslora" if is_rslora else "qlora_standard"
+        else:
+            lora_type = "rslora" if is_rslora else "standard_lora"
+
         return {
             "lora_enabled": True,
-            "lora_type": "rslora" if is_rslora else "standard_lora",
+            "lora_type": lora_type,
+            "quantization_enabled": is_quantized,
+            "quantization_type": quant_type,
+            "quantization_compute_dtype": compute_dtype_str,
             "r": r,
             "lora_alpha": alpha if not alpha.is_integer() else int(alpha),
             "scaling_factor": round(float(scaling), 6),
@@ -280,14 +480,21 @@ class SFTWarmupPipeline:
             "modules_to_save": modules_to_save,
         }
 
-    def log_effective_lora_config(self, lora_cfg: LoraConfig | None) -> dict[str, Any]:
-        """Log the complete effective LoRA configuration at the beginning of each SFT run."""
-        metadata = self.get_lora_metadata(lora_cfg)
+    def log_effective_lora_config(
+        self, lora_cfg: LoraConfig | None, quant_cfg: Any = None
+    ) -> dict[str, Any]:
+        """Log the complete effective LoRA / QLoRA configuration at the beginning of each SFT run."""
+        if quant_cfg is None:
+            quant_cfg = getattr(self.cfg.training, "quantization", None) or getattr(
+                self.cfg, "quantization", None
+            )
+        metadata = self.get_lora_metadata(lora_cfg, quant_cfg)
         logger.info(
             "================================================================================\n"
-            "Effective LoRA / PEFT Configuration:\n"
+            "Effective LoRA / PEFT / Quantization Configuration:\n"
             "  • Enabled          : %s\n"
             "  • Architecture     : %s\n"
+            "  • Quantization     : %s (Type: %s, Dtype: %s)\n"
             "  • Rank (r)         : %s\n"
             "  • Alpha            : %s\n"
             "  • Scaling Factor   : %s\n"
@@ -300,6 +507,9 @@ class SFTWarmupPipeline:
             "================================================================================",
             metadata["lora_enabled"],
             metadata["lora_type"],
+            metadata["quantization_enabled"],
+            metadata["quantization_type"],
+            metadata["quantization_compute_dtype"],
             metadata["r"],
             metadata["lora_alpha"],
             metadata["scaling_factor"],
@@ -394,21 +604,52 @@ class SFTWarmupPipeline:
         return tokenizer
 
     def load_model(self, model_name: str) -> PreTrainedModel:
-        """Load base causal language model with appropriate precision."""
+        """Load base causal language model with appropriate precision, device mapping, and quantization."""
         trust_remote = bool(getattr(self.cfg.model, "trust_remote_code", True))
-        device_map = "auto" if torch.cuda.is_available() else None
-        dtype = (
-            torch.bfloat16
-            if (torch.cuda.is_available() and torch.cuda.is_bf16_supported())
-            else torch.float32
-        )
+
+        # Device mapping:
+        # Avoid device_map="auto" by default during training, which shards layers across multiple GPUs
+        # and causes cross-device tensor mismatch in TRL SFTTrainer.compute_loss.
+        device_map = getattr(self.cfg.model, "device_map", None)
+        if device_map is None:
+            device_map = getattr(self.cfg.training, "device_map", None)
+        if device_map is None:
+            if torch.cuda.is_available():
+                local_rank = int(os.environ.get("LOCAL_RANK", 0))
+                device_target = (
+                    local_rank
+                    if local_rank < torch.cuda.device_count()
+                    else torch.cuda.current_device()
+                )
+                device_map = {"": device_target}
+            else:
+                device_map = None
+
+        dtype = torch.bfloat16 if _is_bf16_supported() else torch.float32
+
+        quant_config = self.build_quantization_config()
+
+        kwargs: dict[str, Any] = {
+            "torch_dtype": dtype,
+            "device_map": device_map,
+            "trust_remote_code": trust_remote,
+        }
+        if quant_config is not None:
+            kwargs["quantization_config"] = quant_config
 
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
-            torch_dtype=dtype,
-            device_map=device_map,
-            trust_remote_code=trust_remote,
+            **kwargs,
         )
+
+        if quant_config is not None:
+            gradient_checkpointing = bool(
+                getattr(self.cfg.training, "gradient_checkpointing", True)
+            )
+            model = prepare_model_for_kbit_training(  # type: ignore[no-untyped-call]
+                model, use_gradient_checkpointing=gradient_checkpointing
+            )
+
         return model
 
     def train(
@@ -460,7 +701,10 @@ class SFTWarmupPipeline:
             model = self.load_model(model_name)
 
         lora_config = self.build_lora_config()
-        lora_meta = self.log_effective_lora_config(lora_config)
+        quant_cfg = getattr(self.cfg.training, "quantization", None) or getattr(
+            self.cfg, "quantization", None
+        )
+        lora_meta = self.log_effective_lora_config(lora_config, quant_cfg)
         self.save_lora_metadata(output_dir, lora_meta)
 
         training_args = self.build_training_args(output_dir)
@@ -480,7 +724,10 @@ class SFTWarmupPipeline:
         # If model is already a PeftModel instance (e.g. in test mock), pass peft_config=None.
         peft_cfg_for_trainer = lora_config if not isinstance(model, PeftModel) else None
 
-        trainer = SFTTrainer(
+        trainer_cls = (
+            RobustSFTTrainer if SFTTrainer is RobustSFTTrainer.__bases__[0] else SFTTrainer
+        )
+        trainer = trainer_cls(
             model=model,
             peft_config=peft_cfg_for_trainer,
             args=training_args,

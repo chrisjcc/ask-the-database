@@ -153,6 +153,74 @@ The configuration is automatically persisted to disk alongside the checkpoint ar
 - `models/sft/final/adapter_config.json` (includes `"use_rslora": true/false`)
 
 When Weights & Biases (W&B) is enabled, the pipeline automatically records the architecture distinction:
-- `peft.lora_type`: `"standard_lora"` vs. `"rslora"` vs. `"full_finetuning"`
+- `peft.lora_type`: `"standard_lora"`, `"rslora"`, `"qlora_standard"`, `"qlora_rslora"`, or `"full_finetuning"`
 - `peft.scaling_factor`: effective numerical scaling factor $s$
 - `peft.use_rslora`: boolean flag
+- `peft.quantization_enabled`: boolean flag
+- `peft.quantization_type`: quantization format (e.g. `"4bit_nf4"` or `"8bit"`)
+
+---
+
+## 6. Quantized LoRA (QLoRA) Support
+
+For memory-constrained environments or high-throughput scaling on consumer or cloud GPUs (e.g. CoreWeave, DESY, Slurm nodes), AskTheDatabase supports **4-bit NormalFloat (NF4)** and **8-bit bitsandbytes quantization** seamlessly integrated with both Standard LoRA and rsLoRA.
+
+### YAML Configuration
+
+In `configs/training/sft.yaml`:
+
+```yaml
+# -----------------------------------------------------------------------------
+# Quantization (QLoRA) Configuration
+# -----------------------------------------------------------------------------
+
+quantization:
+  enabled: true                            # Enable 4-bit / 8-bit QLoRA
+  load_in_4bit: true                       # 4-bit precision (default for QLoRA)
+  load_in_8bit: false                      # 8-bit precision (mutually exclusive with 4-bit)
+  bnb_4bit_quant_type: "nf4"               # "nf4" (recommended) or "fp4"
+  bnb_4bit_use_double_quant: true          # Nested / double quantization for memory savings
+  bnb_4bit_compute_dtype: "bfloat16"       # Compute precision ("bfloat16", "float16", "float32")
+```
+
+### Combining QLoRA with rsLoRA
+
+To run 4-bit QLoRA with Rank-Stabilized LoRA:
+
+```bash
+make train-sft ARGS="training.quantization.enabled=true training.lora.use_rslora=true training.lora.r=32 training.lora.lora_alpha=64"
+```
+
+---
+
+## 7. Multi-GPU Execution & Device Placement
+
+### The Cross-Device Tensor Error & Resolution
+
+When training on multi-GPU servers (such as DESY worker nodes with 2x or 4x A100/H100 GPUs), standard Hugging Face pipelines that set `device_map="auto"` distribute model layers across GPUs (e.g., layers 0–14 on `cuda:0` and 15–28 on `cuda:1`). 
+
+In single-process training with TRL's `SFTTrainer`, token reduction inside `compute_loss`:
+```python
+loss = per_token_loss.sum() / torch.as_tensor(num_tokens).clamp(min=1)
+```
+creates `torch.as_tensor(num_tokens)` on the default device (`cuda:0`), while the final output loss tensor resides on the last GPU (`cuda:1`), resulting in:
+```text
+RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:1 and cuda:0!
+```
+
+### Architectural Fixes in AskTheDatabase
+
+1. **Single-Device Process Mapping**:
+   The SFT pipeline automatically detects available GPUs and maps the model to `{"": local_rank}` (or `{"": current_device}`), preventing naive layer splitting across GPUs during training.
+2. **`RobustSFTTrainer`**:
+   Subclasses `SFTTrainer` to defensively trap any cross-device tensor mismatches and gracefully fall back to local per-device loss normalization if multi-GPU model sharding is explicitly forced.
+3. **Explicit Device Map Overrides**:
+   You can override device targeting via Hydra configuration:
+   ```bash
+   make train-sft ARGS="training.device_map='cuda:0'"
+   ```
+4. **Distributed Training (DDP via Accelerate)**:
+   For multi-GPU data parallelism across all GPUs:
+   ```bash
+   accelerate launch --num_processes=2 scripts/train_sft.py training.lora.use_rslora=true
+   ```

@@ -14,6 +14,8 @@ pytest.importorskip(
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import torch
+
 from ask_the_database.training.dataset import (
     DEFAULT_SYSTEM_PROMPT,
     extract_sql_from_completion,
@@ -21,7 +23,12 @@ from ask_the_database.training.dataset import (
     format_prompt_for_generation,
     load_sft_dataset,
 )
-from ask_the_database.training.sft_trainer import SFTWarmupPipeline, validate_lora_config
+from ask_the_database.training.sft_trainer import (
+    RobustSFTTrainer,
+    SFTWarmupPipeline,
+    validate_lora_config,
+    validate_quantization_config,
+)
 
 
 def test_format_chatml_messages_with_gold() -> None:
@@ -730,3 +737,293 @@ def test_dry_run_artifacts_full_finetuning(tmp_path: Path) -> None:
     meta_data = json.loads(metadata_file.read_text())
     assert meta_data["lora_enabled"] is False
     assert meta_data["lora_type"] == "full_finetuning"
+
+
+# -----------------------------------------------------------------------------
+# Quantization (QLoRA) and Device Map Tests
+# -----------------------------------------------------------------------------
+
+
+def test_validate_quantization_config_disabled() -> None:
+    """Verify validate_quantization_config succeeds when disabled or None."""
+    validate_quantization_config(None)
+    validate_quantization_config({"enabled": False})
+    validate_quantization_config({"enabled": "false"})
+    validate_quantization_config(OmegaConf.create({"enabled": False, "load_in_4bit": "invalid"}))
+
+
+def test_validate_quantization_config_missing_bnb() -> None:
+    """Verify ImportError is raised when quantization is enabled but bitsandbytes is missing."""
+    with (
+        patch(
+            "ask_the_database.training.sft_trainer.is_bitsandbytes_available", return_value=False
+        ),
+        pytest.raises(ImportError, match="bitsandbytes' is not installed or available"),
+    ):
+        validate_quantization_config({"enabled": True})
+
+
+def test_validate_quantization_config_valid() -> None:
+    """Verify validate_quantization_config passes with valid 4-bit and 8-bit configs."""
+    with patch(
+        "ask_the_database.training.sft_trainer.is_bitsandbytes_available", return_value=True
+    ):
+        # 4-bit default
+        validate_quantization_config(
+            {
+                "enabled": True,
+                "load_in_4bit": True,
+                "load_in_8bit": False,
+                "bnb_4bit_quant_type": "nf4",
+                "bnb_4bit_use_double_quant": True,
+                "bnb_4bit_compute_dtype": "bfloat16",
+            }
+        )
+        # 4-bit fp4 float16
+        validate_quantization_config(
+            {
+                "enabled": "true",
+                "load_in_4bit": True,
+                "load_in_8bit": False,
+                "bnb_4bit_quant_type": "fp4",
+                "bnb_4bit_use_double_quant": False,
+                "bnb_4bit_compute_dtype": "float16",
+            }
+        )
+        # 8-bit
+        validate_quantization_config(
+            {
+                "enabled": True,
+                "load_in_4bit": False,
+                "load_in_8bit": True,
+            }
+        )
+
+
+def test_validate_quantization_config_invalid_params() -> None:
+    """Verify validation errors for conflicting or invalid quantization settings."""
+    with patch(
+        "ask_the_database.training.sft_trainer.is_bitsandbytes_available", return_value=True
+    ):
+        # Invalid enabled flag
+        with pytest.raises(ValueError, match="Invalid quantization 'enabled' flag"):
+            validate_quantization_config({"enabled": "maybe"})
+
+        # Conflicting 4-bit and 8-bit
+        with pytest.raises(ValueError, match="Conflicting quantization settings"):
+            validate_quantization_config(
+                {"enabled": True, "load_in_4bit": True, "load_in_8bit": True}
+            )
+
+        # Neither 4-bit nor 8-bit
+        with pytest.raises(ValueError, match="neither 'load_in_4bit' nor 'load_in_8bit' is True"):
+            validate_quantization_config(
+                {"enabled": True, "load_in_4bit": False, "load_in_8bit": False}
+            )
+
+        # Invalid quant type
+        with pytest.raises(ValueError, match="Invalid 'bnb_4bit_quant_type'"):
+            validate_quantization_config(
+                {"enabled": True, "load_in_4bit": True, "bnb_4bit_quant_type": "int4"}
+            )
+
+        # Invalid compute dtype
+        with pytest.raises(ValueError, match="Invalid 'bnb_4bit_compute_dtype'"):
+            validate_quantization_config(
+                {"enabled": True, "load_in_4bit": True, "bnb_4bit_compute_dtype": "int8"}
+            )
+
+        # Non-boolean load_in_4bit
+        with pytest.raises(ValueError, match="Invalid 'load_in_4bit' flag"):
+            validate_quantization_config({"enabled": True, "load_in_4bit": "yes"})
+
+        # Non-boolean double quant
+        with pytest.raises(ValueError, match="Invalid 'bnb_4bit_use_double_quant'"):
+            validate_quantization_config(
+                {"enabled": True, "load_in_4bit": True, "bnb_4bit_use_double_quant": 123}
+            )
+
+
+def test_build_quantization_config() -> None:
+    """Verify build_quantization_config creates appropriate BitsAndBytesConfig."""
+    # Disabled or missing
+    pipeline_none = SFTWarmupPipeline(OmegaConf.create({"training": {}, "model": {}}))
+    assert pipeline_none.build_quantization_config() is None
+
+    pipeline_disabled = SFTWarmupPipeline(
+        OmegaConf.create({"training": {"quantization": {"enabled": False}}, "model": {}})
+    )
+    assert pipeline_disabled.build_quantization_config() is None
+
+    with patch(
+        "ask_the_database.training.sft_trainer.is_bitsandbytes_available", return_value=True
+    ):
+        # 8-bit
+        pipeline_8bit = SFTWarmupPipeline(
+            OmegaConf.create(
+                {
+                    "training": {
+                        "quantization": {
+                            "enabled": True,
+                            "load_in_4bit": False,
+                            "load_in_8bit": True,
+                        }
+                    },
+                    "model": {},
+                }
+            )
+        )
+        bnb_8bit = pipeline_8bit.build_quantization_config()
+        assert bnb_8bit is not None
+        assert bnb_8bit.load_in_8bit is True
+        assert bnb_8bit.load_in_4bit is False
+
+        # 4-bit nf4
+        pipeline_4bit = SFTWarmupPipeline(
+            OmegaConf.create(
+                {
+                    "training": {
+                        "quantization": {
+                            "enabled": True,
+                            "load_in_4bit": True,
+                            "load_in_8bit": False,
+                            "bnb_4bit_quant_type": "nf4",
+                            "bnb_4bit_use_double_quant": True,
+                            "bnb_4bit_compute_dtype": "bfloat16",
+                        }
+                    },
+                    "model": {},
+                }
+            )
+        )
+        bnb_4bit = pipeline_4bit.build_quantization_config()
+        assert bnb_4bit is not None
+        assert bnb_4bit.load_in_4bit is True
+        assert bnb_4bit.load_in_8bit is False
+        assert bnb_4bit.bnb_4bit_quant_type == "nf4"
+        assert bnb_4bit.bnb_4bit_use_double_quant is True
+
+
+def test_qlora_metadata_tracking() -> None:
+    """Verify metadata captures QLoRA configurations for both Standard LoRA and rsLoRA."""
+    quant_cfg = OmegaConf.create(
+        {
+            "enabled": True,
+            "load_in_4bit": True,
+            "load_in_8bit": False,
+            "bnb_4bit_quant_type": "nf4",
+            "bnb_4bit_compute_dtype": "bfloat16",
+        }
+    )
+
+    from peft import LoraConfig, TaskType
+
+    peft_lora = LoraConfig(r=16, lora_alpha=32, use_rslora=True, task_type=TaskType.CAUSAL_LM)
+    meta = SFTWarmupPipeline.get_lora_metadata(peft_lora, quant_cfg)
+    assert meta["lora_type"] == "qlora_rslora"
+    assert meta["quantization_enabled"] is True
+    assert meta["quantization_type"] == "4bit_nf4"
+    assert meta["quantization_compute_dtype"] == "bfloat16"
+
+    # Standard LoRA + 4-bit
+    peft_standard = LoraConfig(r=16, lora_alpha=32, use_rslora=False, task_type=TaskType.CAUSAL_LM)
+    meta_std = SFTWarmupPipeline.get_lora_metadata(peft_standard, quant_cfg)
+    assert meta_std["lora_type"] == "qlora_standard"
+
+    # Full fine-tuning + 8-bit
+    quant_8bit = OmegaConf.create({"enabled": True, "load_in_8bit": True, "load_in_4bit": False})
+    meta_ft = SFTWarmupPipeline.get_lora_metadata(None, quant_8bit)
+    assert meta_ft["lora_type"] == "quantized_full_finetuning"
+    assert meta_ft["quantization_type"] == "8bit"
+
+
+def test_load_model_device_map_and_quantization() -> None:
+    """Verify load_model sets single-device map to prevent multi-GPU layer splitting and invokes kbit preparation."""
+    cfg = OmegaConf.create(
+        {
+            "model": {"name": "dummy_model", "trust_remote_code": True},
+            "training": {
+                "quantization": {
+                    "enabled": True,
+                    "load_in_4bit": True,
+                    "load_in_8bit": False,
+                    "bnb_4bit_quant_type": "nf4",
+                    "bnb_4bit_use_double_quant": True,
+                    "bnb_4bit_compute_dtype": "bfloat16",
+                },
+                "gradient_checkpointing": True,
+            },
+        }
+    )
+
+    pipeline = SFTWarmupPipeline(cfg)
+
+    with (
+        patch("ask_the_database.training.sft_trainer.is_bitsandbytes_available", return_value=True),
+        patch("ask_the_database.training.sft_trainer.torch.cuda.is_available", return_value=True),
+        patch("ask_the_database.training.sft_trainer.torch.cuda.device_count", return_value=2),
+        patch("ask_the_database.training.sft_trainer.torch.cuda.current_device", return_value=0),
+        patch(
+            "ask_the_database.training.sft_trainer.AutoModelForCausalLM.from_pretrained"
+        ) as mock_from_pretrained,
+        patch(
+            "ask_the_database.training.sft_trainer.prepare_model_for_kbit_training"
+        ) as mock_prep_kbit,
+    ):
+        mock_raw_model = MagicMock()
+        mock_from_pretrained.return_value = mock_raw_model
+        mock_prep_kbit.return_value = mock_raw_model
+
+        loaded_model = pipeline.load_model("dummy_model")
+        assert loaded_model is mock_raw_model
+
+        mock_from_pretrained.assert_called_once()
+        _, kwargs = mock_from_pretrained.call_args
+        # Crucial check: device_map must be single device {"": 0}, NOT "auto"
+        assert kwargs["device_map"] == {"": 0}
+        assert kwargs.get("quantization_config") is not None
+
+        mock_prep_kbit.assert_called_once_with(mock_raw_model, use_gradient_checkpointing=True)
+
+
+def test_robust_sft_trainer_cross_device_recovery() -> None:
+    """Verify RobustSFTTrainer catches multi-GPU cross-device tensor mismatch and retries cleanly."""
+    mock_model = MagicMock()
+    mock_inputs = {"input_ids": torch.tensor([[1, 2, 3]])}
+
+    trainer = RobustSFTTrainer.__new__(RobustSFTTrainer)
+
+    call_count = 0
+
+    def mock_super_compute_loss(model, inputs, return_outputs=False, num_items_in_batch=None):
+        nonlocal call_count
+        call_count += 1
+        if num_items_in_batch is not None:
+            raise RuntimeError(
+                "Expected all tensors to be on the same device, but found at least two devices, cuda:1 and cuda:0!"
+            )
+        return torch.tensor(0.42)
+
+    with patch.object(
+        RobustSFTTrainer.__bases__[0], "compute_loss", side_effect=mock_super_compute_loss
+    ):
+        loss = trainer.compute_loss(mock_model, mock_inputs, num_items_in_batch=16)
+        assert call_count == 2
+        assert torch.isclose(loss, torch.tensor(0.42))
+
+
+def test_robust_sft_trainer_reraises_other_errors() -> None:
+    """Verify RobustSFTTrainer re-raises unrelated runtime errors without suppressing them."""
+    mock_model = MagicMock()
+    mock_inputs = {}
+    trainer = RobustSFTTrainer.__new__(RobustSFTTrainer)
+
+    with (
+        patch.object(
+            RobustSFTTrainer.__bases__[0],
+            "compute_loss",
+            side_effect=RuntimeError("CUDA out of memory"),
+        ),
+        pytest.raises(RuntimeError, match="CUDA out of memory"),
+    ):
+        trainer.compute_loss(mock_model, mock_inputs, num_items_in_batch=16)

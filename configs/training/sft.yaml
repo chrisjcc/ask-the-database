@@ -64,3 +64,16 @@ lora:
 
   # Initialization strategy
   init_lora_weights: true                  # Initialization strategy (true, "gaussian", etc.)
+
+# -----------------------------------------------------------------------------
+# Quantization (QLoRA) Configuration
+# -----------------------------------------------------------------------------
+
+quantization:
+  enabled: false                           # Whether to enable 4-bit / 8-bit QLoRA
+  load_in_4bit: true                       # Load model in 4-bit precision (QLoRA)
+  load_in_8bit: false                      # Load model in 8-bit precision (mutually exclusive with 4-bit)
+  bnb_4bit_quant_type: "nf4"               # 4-bit quantization type ("nf4" or "fp4")
+  bnb_4bit_use_double_quant: true          # Enable nested / double quantization for memory savings
+  bnb_4bit_compute_dtype: "bfloat16"       # Compute dtype for 4-bit ("bfloat16", "float16", "float32")
+
