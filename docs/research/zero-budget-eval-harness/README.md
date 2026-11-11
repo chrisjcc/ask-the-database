@@ -10,7 +10,8 @@ This directory contains the feasibility research, architectural analysis, and Mi
 | :--- | :--- |
 | **[`feasibility_study.md`](feasibility_study.md)** | **Feasibility Study & Architectural Analysis**: Evaluates in-process fixture testing, error-trap taxonomies, DuckDB vs. SQLite tradeoffs, and naive set equality vs. mutation testing. |
 | **[`mve_implementation_plan.md`](mve_implementation_plan.md)** | **Minimum Viable Experiment Implementation Plan**: Defines the 3-way comparative experimental methodology (Baseline vs. Harness-Zero vs. Zero-Budget Harness), metrics, 4 decision gates, and implementation sub-tasks. |
-| **`mve_results.md`** *(upcoming)* | **Empirical Benchmark Report & Gate Adjudication**: Final empirical evaluation results, gate scorecard, and branch merge recommendation. |
+| **[`mve_results.md`](mve_results.md)** | **Empirical Benchmark Report & Gate Adjudication**: Final empirical evaluation results, gate scorecard, and branch merge recommendation. |
+| **[`zero_budget_evaluation_guide.md`](../../zero_budget_evaluation_guide.md)** | **Golden Test Fixtures & Operational Guide**: Explains the 3 curated test fixtures in `data/fixtures/`, Git tracking requirements, `.gitignore` exceptions, pre-commit gates, and pytest dependencies. |
 
 ---
 

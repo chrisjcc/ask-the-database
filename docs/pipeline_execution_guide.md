@@ -161,6 +161,20 @@ make train-sft ARGS="model=qwen2_5_coder_1_5b training.dataset_path=data/process
 ```
 * **Resulting Checkpoint:** `models/mve/sft_baseline` (or custom `training.output_dir`)
 * **Data Format:** `data/processed/train.jsonl` consists of single-turn demonstration pairs where the user prompt contains the question and full database schema DDL, and the assistant responds directly with the target SQL.
+* **LoRA & Rank-Stabilized LoRA (rsLoRA) Support:**
+  - **Standard LoRA (default):** Scales adapter updates by $s = \alpha / r$.
+    ```bash
+    make train-sft ARGS="training.lora.use_rslora=false training.lora.r=16 training.lora.lora_alpha=32"
+    ```
+  - **Rank-Stabilized LoRA (rsLoRA):** Scales adapter updates by $s = \alpha / \sqrt{r}$ to stabilize learning dynamics as rank increases ($r \ge 16, 32, 64$).
+    ```bash
+    make train-sft ARGS="training.lora.use_rslora=true training.lora.r=32 training.lora.lora_alpha=64"
+    ```
+  - **Full Fine-Tuning (LoRA Disabled):**
+    ```bash
+    make train-sft ARGS="training.lora.enabled=false training.learning_rate=1e-5"
+    ```
+  - For comprehensive architecture and scaling details, see [LoRA & rsLoRA SFT Guide](file:///Users/christiancontrerascampana/Desktop/GitHub/text-to-sql/ask-the-database/docs/lora_rslora_sft_guide.md).
 
 ---
 

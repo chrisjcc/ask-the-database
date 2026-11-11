@@ -166,13 +166,13 @@ dvc-repro:
 # ------------------------------------------------------------
 
 train-sft:
-	$(PYTHON) scripts/train_sft.py $(ARGS)
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_sft.py $(ARGS)
 
 train-filtered:
-	$(PYTHON) scripts/train_sft.py training.dataset_path=data/distillation/filtered_rollouts.jsonl training.output_dir=models/mve/filtered_rollouts $(ARGS)
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_sft.py training.dataset_path=data/distillation/filtered_rollouts.jsonl training.output_dir=models/mve/filtered_rollouts $(ARGS)
 
 train-harness-zero:
-	$(PYTHON) scripts/train_sft.py training.dataset_path=data/distillation/reviewed_trajectories.jsonl training.output_dir=models/sft/harness_zero $(ARGS)
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_sft.py training.dataset_path=data/distillation/reviewed_trajectories.jsonl training.output_dir=models/sft/harness_zero $(ARGS)
 
 train-grpo:
 	$(PYTHON) scripts/train_rlvr.py training=rlvr_skyrl_agent $(ARGS)
