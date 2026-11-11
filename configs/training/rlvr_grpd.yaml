@@ -1,0 +1,77 @@
+# -----------------------------------------------------------------------------
+# RLVR Policy Optimization Configuration with OPDVR / GRPD Support
+# -----------------------------------------------------------------------------
+# Configuration for multi-turn Reinforcement Learning with Verifiable Rewards (RLVR)
+# supporting GRPO, DAPO, GSPO, OPD, OPDVR, and GRPD policy optimization.
+
+algorithm: "grpd"  # Options: "grpo", "dapo", "gspo", "opd", "opdvr", "grpd"
+
+# --- Global & Checkpoint Paths ---
+model_path: "models/sft/final"
+output_dir: "models/rlvr/grpd_final"
+
+# --- Training & Optimization Hyperparameters ---
+learning_rate: 5.0e-6
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 4
+num_train_epochs: 3
+max_grad_norm: 1.0
+warmup_ratio: 0.1
+beta: 0.04
+bf16: false
+fp16: false
+max_steps: -1
+
+# --- Interactive Rollouts & Environment ---
+num_rollouts_per_prompt: 4
+num_generations: 4
+max_turns: 5
+max_completion_length: 512
+temperature: 0.7
+dry_run: false
+step_penalty: -0.05
+recovery_bonus: 0.3
+
+# --- Distillation & Privileged Schema Teacher ---
+distillation:
+  enabled: true
+  teacher_model_name_or_path: "Qwen/Qwen2.5-Coder-7B-Instruct"
+  share_base_model: true  # Share base weights with student LoRA to consume zero duplicate VRAM
+  privileged_schema: true # Inject complete oracle DDL schema into teacher context
+  gating_mode: "relu"     # Options: "none" (vanilla OPD), "relu" (OPDVR/GRPD), "inverse"
+  eps: 1.0e-8
+  max_ddl_tokens: 2500
+
+# --- Logging & Checkpointing ---
+logging_steps: 1
+save_steps: 50
+save_strategy: "epoch"
+report_to: "none"
+wandb:
+  enabled: false
+  project: "ask-the-database"
+
+# --- Verifiable Reward Configuration ---
+rewards:
+  use_mutation_test_suite: true
+  mutation_count: 5
+  weights:
+    test_suite: 1.0
+    syntax: 0.1
+    schema: 0.1
+    efficiency: 0.05
+
+# --- PEFT / LoRA Adapter ---
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  bias: "none"
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"

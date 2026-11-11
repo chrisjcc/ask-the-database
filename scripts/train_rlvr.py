@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import hydra
+import torch
 from omegaconf import DictConfig, OmegaConf
 
 from ask_the_database.inference.pipeline import NL2SQLPipeline
@@ -122,7 +123,13 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                 gold_sqls=[instance["gold_sql"]] * num_rollouts,
                 db_paths=[tmp_db_path] * num_rollouts,
             )
-            step_metrics = adapter.train_step(mock_batch)
+            mock_action_mask = torch.ones((num_rollouts, 16), dtype=torch.float32)
+            mock_teacher_logps = torch.zeros((num_rollouts, 16), dtype=torch.float32) + 0.05
+            step_metrics = adapter.train_step(
+                mock_batch,
+                action_mask=mock_action_mask,
+                teacher_logps=mock_teacher_logps,
+            )
             telemetry["last_step_metrics"] = step_metrics
 
             # Persist dry-run state artifacts
@@ -196,6 +203,17 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
         max_turns=int(training_cfg.get("max_turns", 5)),
     )
 
+    if adapter.grpo_config.distillation_enabled:
+        adapter.initialize_teacher(model=pipeline.model, tokenizer=pipeline.tokenizer)
+
+    from ask_the_database.training.action_masking import ActionMaskGenerator
+
+    action_mask_gen = (
+        ActionMaskGenerator(tokenizer=pipeline.tokenizer)
+        if pipeline.tokenizer is not None
+        else None
+    )
+
     report_to = str(training_cfg.get("report_to", "none")).lower()
     wandb_run = None
     if report_to == "wandb":
@@ -223,6 +241,7 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
         instance = instances[step % len(instances)]
         rollout_rewards: list[float] = []
         completions: list[str] = []
+        rollout_histories: list[list[dict[str, Any]]] = []
 
         for _ in range(num_rollouts):
             env.reset(instance)
@@ -243,6 +262,7 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                 _, r, done, _ = env.step(action)
             rollout_rewards.append(r)
             completions.append(last_action)
+            rollout_histories.append(list(env.history))
 
         batch = RolloutBatch(
             prompts=[instance.get("question", "")] * num_rollouts,
@@ -250,7 +270,41 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
             gold_sqls=[instance.get("gold_sql", "")] * num_rollouts,
             db_paths=[str(instance.get("db_path", ":memory:"))] * num_rollouts,
         )
-        step_metrics = adapter.train_step(batch)
+
+        # Extract token-level action masks and teacher logps if available
+        batch_action_mask = None
+        batch_teacher_logps = None
+
+        if action_mask_gen is not None and pipeline.tokenizer is not None and rollout_histories:
+            try:
+                mask_list = []
+                ids_list = []
+                for hist in rollout_histories:
+                    inp_ids, a_mask = action_mask_gen.generate_from_messages(hist)
+                    ids_list.append(inp_ids.squeeze(0))
+                    mask_list.append(a_mask.squeeze(0))
+
+                max_len = max(t.size(0) for t in ids_list)
+                padded_ids = torch.zeros((len(ids_list), max_len), dtype=torch.long)
+                padded_mask = torch.zeros((len(mask_list), max_len), dtype=torch.float32)
+                for i, (ids, m) in enumerate(zip(ids_list, mask_list, strict=True)):
+                    padded_ids[i, : ids.size(0)] = ids
+                    padded_mask[i, : m.size(0)] = m
+
+                batch_action_mask = padded_mask
+
+                if adapter.teacher is not None and pipeline.model is not None:
+                    batch_teacher_logps = adapter.teacher.compute_action_logprobs(
+                        input_ids=padded_ids,
+                    )
+            except Exception as exc:
+                logger.debug("Failed to compute dynamic action masks / teacher logps: %s", exc)
+
+        step_metrics = adapter.train_step(
+            batch,
+            action_mask=batch_action_mask,
+            teacher_logps=batch_teacher_logps,
+        )
 
         advantages = compute_group_normalized_rewards(rollout_rewards, group_size=num_rollouts)
         mean_reward = sum(rollout_rewards) / len(rollout_rewards) if rollout_rewards else 0.0
@@ -272,18 +326,35 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
             wandb.log(wandb_payload, step=step + 1)
 
         if (step + 1) % logging_steps == 0 or step == 0 or (step + 1) == total_steps:
-            logger.info(
-                "Step %d/%d (%.1f%%) [%s] — Mean Reward: %.4f | Policy Loss: %.4f | Filtered: %.1f%% | Effective Tokens: %d | Advantages: %s",
-                step + 1,
-                total_steps,
-                ((step + 1) / total_steps) * 100,
-                adapter.grpo_config.algorithm.upper(),
-                mean_reward,
-                step_metrics.get("policy_loss", 0.0),
-                step_metrics.get("filtered_groups_ratio", 0.0) * 100.0,
-                int(step_metrics.get("effective_tokens", 0)),
-                [round(a, 3) for a in advantages[:4]],
-            )
+            if adapter.grpo_config.distillation_enabled:
+                logger.info(
+                    "Step %d/%d (%.1f%%) [%s] — Mean Reward: %.4f | Policy Loss: %.4f | Filtered: %.1f%% | Effective Tokens: %d | R0: %.2f | T1 Conf: %.2f | T2 Conf: %.2f | Advantages: %s",
+                    step + 1,
+                    total_steps,
+                    ((step + 1) / total_steps) * 100,
+                    adapter.grpo_config.algorithm.upper(),
+                    mean_reward,
+                    step_metrics.get("policy_loss", 0.0),
+                    step_metrics.get("filtered_groups_ratio", 0.0) * 100.0,
+                    int(step_metrics.get("effective_tokens", 0)),
+                    step_metrics.get("r_zero_ratio", 0.0),
+                    step_metrics.get("type1_conflict_ratio", 0.0),
+                    step_metrics.get("type2_conflict_ratio", 0.0),
+                    [round(a, 3) for a in advantages[:4]],
+                )
+            else:
+                logger.info(
+                    "Step %d/%d (%.1f%%) [%s] — Mean Reward: %.4f | Policy Loss: %.4f | Filtered: %.1f%% | Effective Tokens: %d | Advantages: %s",
+                    step + 1,
+                    total_steps,
+                    ((step + 1) / total_steps) * 100,
+                    adapter.grpo_config.algorithm.upper(),
+                    mean_reward,
+                    step_metrics.get("policy_loss", 0.0),
+                    step_metrics.get("filtered_groups_ratio", 0.0) * 100.0,
+                    int(step_metrics.get("effective_tokens", 0)),
+                    [round(a, 3) for a in advantages[:4]],
+                )
 
         if (step + 1) % save_steps == 0 or (step + 1) == total_steps:
             out_path = Path(output_dir)

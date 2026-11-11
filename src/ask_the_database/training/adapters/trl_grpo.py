@@ -4,6 +4,7 @@ Bridges between TRL GRPOTrainer policy rollouts and the SQLRewardRubric
 verifiable database verification engine, supporting DAPO and GSPO.
 """
 
+import contextlib
 import logging
 import math
 import os
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 class GRPOTrainingConfig:
     """Configuration for Group Relative Policy Optimization and enterprise variants (DAPO, GSPO)."""
 
-    algorithm: Literal["grpo", "dapo", "gspo"] = "dapo"
+    algorithm: Literal["grpo", "dapo", "gspo", "opd", "opdvr", "grpd"] = "grpd"
     enable_dynamic_sampling: bool = True
     min_reward_std: float = 1e-4
     dapo_clip_low: float = 0.20
@@ -49,6 +50,13 @@ class GRPOTrainingConfig:
     fp16: bool = False
     max_steps: int = -1
     output_dir: str = "models/rlvr/harness_zero_grpo"
+    distillation_enabled: bool = False
+    teacher_model_name_or_path: str = "Qwen/Qwen2.5-Coder-7B-Instruct"
+    share_base_model: bool = True
+    privileged_schema: bool = True
+    gating_mode: Literal["none", "relu", "inverse"] = "relu"
+    distillation_eps: float = 1e-8
+    max_ddl_tokens: int = 2500
     extra_kwargs: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -67,8 +75,24 @@ class GRPOTrainingConfig:
                 return default if val is None else val
             return default
 
+        dist_cfg = (
+            cfg.get("distillation", {}) if hasattr(cfg, "get") else getattr(cfg, "distillation", {})
+        )
+        if hasattr(dist_cfg, "_content") or hasattr(dist_cfg, "__dict__"):
+            with contextlib.suppress(Exception):
+                dist_cfg = OmegaConf.to_container(dist_cfg, resolve=True)  # type: ignore[assignment]
+        if not isinstance(dist_cfg, dict):
+            dist_cfg = {}
+
+        algo_val = str(get_val("algorithm", "grpd")).lower()
+        is_dist_algo = algo_val in ("opd", "opdvr", "grpd")
+        dist_enabled = bool(dist_cfg.get("enabled", is_dist_algo))
+        gating_mode_val = str(
+            dist_cfg.get("gating_mode", "none" if algo_val == "opd" else "relu")
+        ).lower()
+
         return cls(
-            algorithm=str(get_val("algorithm", "dapo")),  # type: ignore[arg-type]
+            algorithm=algo_val,  # type: ignore[arg-type]
             enable_dynamic_sampling=bool(get_val("enable_dynamic_sampling", True)),
             min_reward_std=float(get_val("min_reward_std", 1e-4)),
             dapo_clip_low=float(get_val("dapo_clip_low", 0.20)),
@@ -89,6 +113,15 @@ class GRPOTrainingConfig:
             fp16=bool(get_val("fp16", False)),
             max_steps=int(get_val("max_steps", -1)),
             output_dir=str(get_val("output_dir", "models/rlvr/harness_zero_grpo")),
+            distillation_enabled=dist_enabled,
+            teacher_model_name_or_path=str(
+                dist_cfg.get("teacher_model_name_or_path", "Qwen/Qwen2.5-Coder-7B-Instruct")
+            ),
+            share_base_model=bool(dist_cfg.get("share_base_model", True)),
+            privileged_schema=bool(dist_cfg.get("privileged_schema", True)),
+            gating_mode=gating_mode_val,  # type: ignore[arg-type]
+            distillation_eps=float(dist_cfg.get("eps", 1e-8)),
+            max_ddl_tokens=int(dist_cfg.get("max_ddl_tokens", 2500)),
         )
 
 
@@ -106,6 +139,9 @@ class PolicyLossTelemetry:
     clip_fraction_low: float = 0.0
     clip_fraction_high: float = 0.0
     algorithm: str = "dapo"
+    r_zero_ratio: float = 0.0
+    type1_conflict_ratio: float = 0.0
+    type2_conflict_ratio: float = 0.0
 
     def to_dict(self) -> dict[str, float]:
         """Convert telemetry metrics to dictionary."""
@@ -119,6 +155,9 @@ class PolicyLossTelemetry:
             "train/mean_seq_ratio": self.mean_seq_ratio,
             "train/clip_fraction_low": self.clip_fraction_low,
             "train/clip_fraction_high": self.clip_fraction_high,
+            "train/r_zero_ratio": self.r_zero_ratio,
+            "train/type1_conflict_ratio": self.type1_conflict_ratio,
+            "train/type2_conflict_ratio": self.type2_conflict_ratio,
         }
 
 
@@ -222,6 +261,9 @@ def compute_policy_loss(
     mean_seq_ratio = 1.0
     clip_fraction_low = 0.0
     clip_fraction_high = 0.0
+    r_zero_ratio = 0.0
+    type1_conflict_ratio = 0.0
+    type2_conflict_ratio = 0.0
     adv_expanded = advantages.unsqueeze(-1)  # (B, 1)
 
     # 4. Objective Formulation Dispatch
@@ -299,6 +341,46 @@ def compute_policy_loss(
             denom_seq = max(1, num_active_samples)
             clip_fraction_low = float(low_clipped.sum().item() / denom_seq)
             clip_fraction_high = float(high_clipped.sum().item() / denom_seq)
+
+    elif algo in ("opd", "opdvr", "grpd"):
+        # Group Relative Policy Distillation with Verifiable Reward (OPDVR / GRPD)
+        from ask_the_database.training.losses import (
+            compute_conflict_diagnostics,
+            compute_grpd_token_rewards,
+        )
+
+        gating_mode = config.gating_mode
+        if algo == "opd":
+            gating_mode = "none"
+        elif algo in ("opdvr", "grpd") and gating_mode not in ("none", "relu", "inverse"):
+            gating_mode = "relu"
+
+        token_rewards = compute_grpd_token_rewards(
+            student_logprobs=per_token_logps,
+            teacher_logprobs=old_per_token_logps,
+            advantages=adv_expanded,
+            gating_mode=gating_mode,
+            eps=config.distillation_eps,
+        )
+        token_loss = -token_rewards * per_token_logps
+
+        if effective_tokens > 0:
+            loss = (token_loss * token_active_mask).sum() / float(effective_tokens)
+        else:
+            loss = 0.0 * per_token_logps.sum()
+
+        with torch.no_grad():
+            conf_diag = compute_conflict_diagnostics(
+                student_logprobs=per_token_logps,
+                teacher_logprobs=old_per_token_logps,
+                advantages=adv_expanded,
+                action_mask=token_active_mask,
+                eps=config.distillation_eps,
+            )
+            r_zero_ratio = float(conf_diag.get("r_zero_ratio", 0.0))
+            type1_conflict_ratio = float(conf_diag.get("type1_conflict_ratio", 0.0))
+            type2_conflict_ratio = float(conf_diag.get("type2_conflict_ratio", 0.0))
+
     else:
         raise ValueError(f"Unsupported policy optimization algorithm: '{config.algorithm}'")
 
@@ -313,6 +395,9 @@ def compute_policy_loss(
         clip_fraction_low=clip_fraction_low,
         clip_fraction_high=clip_fraction_high,
         algorithm=algo,
+        r_zero_ratio=r_zero_ratio,
+        type1_conflict_ratio=type1_conflict_ratio,
+        type2_conflict_ratio=type2_conflict_ratio,
     )
 
 
@@ -389,15 +474,16 @@ class TRLGRPOAdapter(BaseRLAdapter):
     def __init__(
         self,
         config: DictConfig | GRPOTrainingConfig,
-        rubric: SQLRewardRubric,
+        rubric: SQLRewardRubric | None = None,
     ) -> None:
         """Initialize adapter with configuration and verifiable reward rubric."""
+        reward_rubric = rubric if rubric is not None else SQLRewardRubric()
         if isinstance(config, GRPOTrainingConfig):
             self.grpo_config = config
             hydra_cfg = OmegaConf.create({"training": config.__dict__})
-            super().__init__(hydra_cfg, rubric)
+            super().__init__(hydra_cfg, reward_rubric)
         else:
-            super().__init__(config, rubric)
+            super().__init__(config, reward_rubric)
             self.grpo_config = GRPOTrainingConfig.from_dict_config(config)
 
         self.output_dir = Path(self.grpo_config.output_dir)
@@ -514,6 +600,7 @@ class TRLGRPOAdapter(BaseRLAdapter):
         batch: RolloutBatch,
         group_size: int | None = None,
         action_mask: torch.Tensor | None = None,
+        teacher_logps: torch.Tensor | None = None,
     ) -> dict[str, float]:
         """Execute reward scoring and compute telemetry metrics for the rollout batch."""
         rewards = self.compute_rewards(batch)
@@ -535,9 +622,17 @@ class TRLGRPOAdapter(BaseRLAdapter):
         dummy_logps = torch.zeros((n, seq_len), dtype=torch.float32)
         dummy_mask = torch.ones((n, seq_len), dtype=torch.float32)
 
+        if teacher_logps is not None:
+            old_logps = teacher_logps
+        elif self.grpo_config.algorithm in ("opd", "opdvr", "grpd"):
+            # Provide non-identical teacher baseline to compute diagnostics under dummy inputs
+            old_logps = dummy_logps + 0.1
+        else:
+            old_logps = dummy_logps
+
         telemetry = compute_policy_loss(
             per_token_logps=dummy_logps,
-            old_per_token_logps=dummy_logps,
+            old_per_token_logps=old_logps,
             completion_mask=dummy_mask,
             rewards=rewards_t,
             group_size=g,
@@ -557,6 +652,24 @@ class TRLGRPOAdapter(BaseRLAdapter):
         )
         return metrics
 
+    def initialize_teacher(self, model: Any | None = None, tokenizer: Any | None = None) -> None:
+        """Initialize PrivilegedSchemaTeacher if distillation is enabled."""
+        if self.grpo_config.distillation_enabled:
+            from ask_the_database.training.privileged_teacher import PrivilegedSchemaTeacher
+
+            self.teacher = PrivilegedSchemaTeacher(
+                model=model,
+                tokenizer=tokenizer,
+                is_shared_base=self.grpo_config.share_base_model,
+                max_ddl_tokens=self.grpo_config.max_ddl_tokens,
+            )
+            logger.info(
+                "Initialized PrivilegedSchemaTeacher for %s (gating=%s, shared_base=%s)",
+                self.grpo_config.algorithm.upper(),
+                self.grpo_config.gating_mode,
+                self.grpo_config.share_base_model,
+            )
+
     def save_checkpoint(self, output_dir: str) -> None:
         """Persist checkpoint adapter weights or training state."""
         out_path = Path(output_dir)
@@ -568,6 +681,9 @@ class TRLGRPOAdapter(BaseRLAdapter):
             "dapo_clip_low": self.grpo_config.dapo_clip_low,
             "dapo_clip_high": self.grpo_config.dapo_clip_high,
             "gspo_seq_epsilon": self.grpo_config.gspo_seq_epsilon,
+            "distillation_enabled": self.grpo_config.distillation_enabled,
+            "gating_mode": self.grpo_config.gating_mode,
+            "share_base_model": self.grpo_config.share_base_model,
         }
         import json
 
