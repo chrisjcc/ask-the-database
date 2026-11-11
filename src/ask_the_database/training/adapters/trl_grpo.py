@@ -165,6 +165,7 @@ def compute_policy_loss(
     rewards: torch.Tensor,
     group_size: int = 8,
     config: GRPOTrainingConfig | None = None,
+    action_mask: torch.Tensor | None = None,
 ) -> PolicyLossTelemetry:
     """Compute policy optimization loss across GRPO, DAPO, and GSPO algorithms.
 
@@ -175,6 +176,9 @@ def compute_policy_loss(
         rewards: Raw scalar rewards for each trajectory, shaped (B,).
         group_size: Number of generations G per prompt.
         config: GRPOTrainingConfig specifying algorithm and clipping hyperparameters.
+        action_mask: Optional binary mask isolating policy action/thought tokens (1)
+            from environment observation tokens (0). If provided, observation tokens
+            are strictly excluded from policy gradient updates.
 
     Returns:
         PolicyLossTelemetry with scalar loss and diagnostic statistics.
@@ -204,14 +208,15 @@ def compute_policy_loss(
     norm_advantages = norm_advantages * valid_groups.unsqueeze(-1).float()
     advantages = norm_advantages.view(b)  # (B,)
 
-    # 2. Token-level Log Ratio
+    # 2. Token-level Log Ratio with Multi-Turn Action Loss Masking
+    eff_mask = completion_mask if action_mask is None else (completion_mask * action_mask)
     token_log_ratio = per_token_logps - old_per_token_logps
-    token_log_ratio = token_log_ratio * completion_mask
+    token_log_ratio = token_log_ratio * eff_mask
     token_ratio = torch.exp(token_log_ratio)
 
     # 3. Active Masking
     group_mask = valid_groups.repeat_interleave(g).float()  # (B,)
-    token_active_mask = completion_mask * group_mask.unsqueeze(-1)  # (B, T)
+    token_active_mask = eff_mask * group_mask.unsqueeze(-1)  # (B, T)
     effective_tokens = int(token_active_mask.sum().item())
 
     mean_seq_ratio = 1.0
@@ -269,8 +274,8 @@ def compute_policy_loss(
 
     elif algo == "gspo":
         # Group Sequence Policy Optimization (Length-normalized sequence ratio)
-        seq_lens = completion_mask.sum(dim=-1).clamp(min=1.0)  # (B,)
-        seq_mean_log_ratio = (token_log_ratio * completion_mask).sum(dim=-1) / seq_lens  # (B,)
+        seq_lens = eff_mask.sum(dim=-1).clamp(min=1.0)  # (B,)
+        seq_mean_log_ratio = (token_log_ratio * eff_mask).sum(dim=-1) / seq_lens  # (B,)
         seq_ratio = torch.exp(seq_mean_log_ratio)  # (B,)
 
         eps_s = config.gspo_seq_epsilon
@@ -323,6 +328,7 @@ class CustomGRPOTrainer(GRPOTrainer):
         input_ids = inputs["input_ids"]
         prompt_mask = inputs.get("prompt_mask")
         completion_mask = inputs.get("completion_mask")
+        action_mask = inputs.get("action_mask")
         rewards = inputs.get("rewards")
 
         if prompt_mask is None or completion_mask is None or rewards is None:
@@ -335,6 +341,11 @@ class CustomGRPOTrainer(GRPOTrainer):
         logits = outputs.logits[:, :-1, :]
         targets = input_ids[:, 1:]
         comp_mask = completion_mask[:, 1:]
+        act_mask = None
+        if action_mask is not None:
+            act_mask = (
+                action_mask[:, 1:] if action_mask.shape[1] == input_ids.shape[1] else action_mask
+            )
 
         logps = torch.log_softmax(logits, dim=-1)
         per_token_logps = torch.gather(logps, dim=-1, index=targets.unsqueeze(-1)).squeeze(-1)
@@ -353,6 +364,7 @@ class CustomGRPOTrainer(GRPOTrainer):
             rewards=rewards,
             group_size=group_size,
             config=self.grpo_training_config,
+            action_mask=act_mask,
         )
 
         # Log metrics to trainer tracker
@@ -497,7 +509,12 @@ class TRLGRPOAdapter(BaseRLAdapter):
             max_steps=cfg.max_steps,
         )
 
-    def train_step(self, batch: RolloutBatch, group_size: int | None = None) -> dict[str, float]:
+    def train_step(
+        self,
+        batch: RolloutBatch,
+        group_size: int | None = None,
+        action_mask: torch.Tensor | None = None,
+    ) -> dict[str, float]:
         """Execute reward scoring and compute telemetry metrics for the rollout batch."""
         rewards = self.compute_rewards(batch)
         n = len(rewards)
@@ -514,8 +531,9 @@ class TRLGRPOAdapter(BaseRLAdapter):
 
         # Construct dummy tensor logs for telemetry calculation
         rewards_t = torch.tensor(rewards, dtype=torch.float32)
-        dummy_logps = torch.zeros((n, 8), dtype=torch.float32)
-        dummy_mask = torch.ones((n, 8), dtype=torch.float32)
+        seq_len = action_mask.shape[1] if action_mask is not None else 8
+        dummy_logps = torch.zeros((n, seq_len), dtype=torch.float32)
+        dummy_mask = torch.ones((n, seq_len), dtype=torch.float32)
 
         telemetry = compute_policy_loss(
             per_token_logps=dummy_logps,
@@ -524,6 +542,7 @@ class TRLGRPOAdapter(BaseRLAdapter):
             rewards=rewards_t,
             group_size=g,
             config=self.grpo_config,
+            action_mask=action_mask,
         )
 
         metrics = telemetry.to_dict()
