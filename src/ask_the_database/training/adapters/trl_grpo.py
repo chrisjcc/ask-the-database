@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class GRPOTrainingConfig:
     """Configuration for Group Relative Policy Optimization and enterprise variants (DAPO, GSPO)."""
 
-    algorithm: Literal["grpo", "dapo", "gspo", "opd", "opdvr", "grpd"] = "grpd"
+    algorithm: Literal["grpo", "dapo", "gspo", "opd", "opdvr", "grpd"] = "dapo"
     enable_dynamic_sampling: bool = True
     min_reward_std: float = 1e-4
     dapo_clip_low: float = 0.20
@@ -84,7 +84,7 @@ class GRPOTrainingConfig:
         if not isinstance(dist_cfg, dict):
             dist_cfg = {}
 
-        algo_val = str(get_val("algorithm", "grpd")).lower()
+        algo_val = str(get_val("algorithm", "dapo")).lower()
         is_dist_algo = algo_val in ("opd", "opdvr", "grpd")
         dist_enabled = bool(dist_cfg.get("enabled", is_dist_algo))
         gating_mode_val = str(
