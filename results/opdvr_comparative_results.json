@@ -1,0 +1,160 @@
+{
+  "timestamp": "2026-11-11T19:52:15.901915+00:00",
+  "stage": "Phase 5: 7-Condition Comparative PoC Benchmark",
+  "status": "PASSED",
+  "num_conditions_evaluated": 7,
+  "conditions": {
+    "c0_sft": {
+      "test_suite_acc": 58.42,
+      "execution_acc": 64.12,
+      "step_100_ts_acc": 58.42,
+      "easy_ts_acc": 76.2,
+      "medium_ts_acc": 61.8,
+      "hard_ts_acc": 46.5,
+      "extra_hard_ts_acc": 28.3,
+      "extra_hard_stall_steps": 32,
+      "ast_diversity_entropy": 2.15,
+      "r_zero_ratio": 0.0,
+      "vram_gb": 14.8,
+      "training_time_min": 45.0,
+      "id": "C0",
+      "name": "SFT Baseline"
+    },
+    "c1_pure_rlvr": {
+      "test_suite_acc": 61.8,
+      "execution_acc": 66.83,
+      "step_100_ts_acc": 59.1,
+      "easy_ts_acc": 79.8,
+      "medium_ts_acc": 65.4,
+      "hard_ts_acc": 50.2,
+      "extra_hard_ts_acc": 31.5,
+      "extra_hard_stall_steps": 27,
+      "ast_diversity_entropy": 3.82,
+      "r_zero_ratio": 0.0,
+      "vram_gb": 16.2,
+      "training_time_min": 78.5,
+      "id": "C1",
+      "name": "Pure RLVR (GRPO)"
+    },
+    "c2_vanilla_opd": {
+      "test_suite_acc": 63.25,
+      "execution_acc": 67.5,
+      "step_100_ts_acc": 61.4,
+      "easy_ts_acc": 81.5,
+      "medium_ts_acc": 67.2,
+      "hard_ts_acc": 52.1,
+      "extra_hard_ts_acc": 33.4,
+      "extra_hard_stall_steps": 14,
+      "ast_diversity_entropy": 1.42,
+      "r_zero_ratio": 0.0,
+      "vram_gb": 16.4,
+      "training_time_min": 82.0,
+      "id": "C2",
+      "name": "Vanilla OPD+GRPO"
+    },
+    "c3_binary_opdvr": {
+      "test_suite_acc": 65.47,
+      "execution_acc": 69.83,
+      "step_100_ts_acc": 62.8,
+      "easy_ts_acc": 83.4,
+      "medium_ts_acc": 69.8,
+      "hard_ts_acc": 54.6,
+      "extra_hard_ts_acc": 36.2,
+      "extra_hard_stall_steps": 8,
+      "ast_diversity_entropy": 3.45,
+      "r_zero_ratio": 0.44,
+      "vram_gb": 16.4,
+      "training_time_min": 84.5,
+      "id": "C3",
+      "name": "Binary OPDVR"
+    },
+    "c4_grpd": {
+      "test_suite_acc": 68.38,
+      "execution_acc": 73.11,
+      "step_100_ts_acc": 64.7,
+      "easy_ts_acc": 86.2,
+      "medium_ts_acc": 73.5,
+      "hard_ts_acc": 58.4,
+      "extra_hard_ts_acc": 40.8,
+      "extra_hard_stall_steps": 3,
+      "ast_diversity_entropy": 4.18,
+      "r_zero_ratio": 0.45,
+      "vram_gb": 16.5,
+      "training_time_min": 86.0,
+      "id": "C4",
+      "name": "Full GRPD (Proposed)"
+    },
+    "c5_inv_grpd": {
+      "test_suite_acc": 54.16,
+      "execution_acc": 58.7,
+      "step_100_ts_acc": 52.3,
+      "easy_ts_acc": 71.0,
+      "medium_ts_acc": 56.4,
+      "hard_ts_acc": 42.1,
+      "extra_hard_ts_acc": 24.8,
+      "extra_hard_stall_steps": 41,
+      "ast_diversity_entropy": 2.65,
+      "r_zero_ratio": 0.55,
+      "vram_gb": 16.5,
+      "training_time_min": 86.5,
+      "id": "C5",
+      "name": "Inverted GRPD (Ablation)"
+    },
+    "c6_priv_grpd": {
+      "test_suite_acc": 70.21,
+      "execution_acc": 74.85,
+      "step_100_ts_acc": 66.5,
+      "easy_ts_acc": 88.1,
+      "medium_ts_acc": 75.6,
+      "hard_ts_acc": 60.9,
+      "extra_hard_ts_acc": 43.5,
+      "extra_hard_stall_steps": 2,
+      "ast_diversity_entropy": 4.35,
+      "r_zero_ratio": 0.46,
+      "vram_gb": 16.7,
+      "training_time_min": 89.0,
+      "id": "C6",
+      "name": "Privileged Schema GRPD"
+    }
+  },
+  "hypothesis_adjudication": {
+    "status": "PASSED",
+    "hypotheses": {
+      "H1_sample_efficiency": {
+        "name": "Credit Assignment Acceleration at Step 100",
+        "metric": "Delta R_TS at Step 100 (C4 vs C1)",
+        "observed_delta_pp": 5.6,
+        "target_delta_pp": 4.0,
+        "c4_step_100_acc": 64.7,
+        "c1_step_100_acc": 59.1,
+        "passed": true
+      },
+      "H2_exploration_stall": {
+        "name": "Exploration Plateau Elimination on Extra Hard",
+        "metric": "Consecutive zero-variance steps (std(R)=0)",
+        "observed_stalls": 3,
+        "baseline_stalls_c1": 27,
+        "target_stalls": 5,
+        "passed": true
+      },
+      "H3_syntactic_diversity": {
+        "name": "Syntactic Non-Penalization & AST Structural Diversity",
+        "metric": "AST hash entropy ratio (C4 / C2)",
+        "observed_ratio": 2.94,
+        "target_ratio": 2.5,
+        "c4_ast_entropy": 4.18,
+        "c2_ast_entropy": 1.42,
+        "passed": true
+      },
+      "H4_privileged_distillation": {
+        "name": "Privileged Schema Distillation Scale Parity",
+        "metric": "Percentage parity of 7B student with 14B GRPO baseline",
+        "observed_parity_pct": 98.64,
+        "target_parity_pct": 98.0,
+        "c6_7b_priv_acc": 70.21,
+        "baseline_14b_acc": 71.18,
+        "passed": true
+      }
+    }
+  }
+}
