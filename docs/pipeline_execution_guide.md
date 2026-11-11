@@ -4,7 +4,8 @@ This operational guide provides end-to-end instructions for running the complete
 
 > [!NOTE]
 > **Research & Experimental Findings:**  
-> For the theoretical feasibility study, 4-condition Minimum Viable Experiment (MVE) validation protocol, decision gate adjudications, and RLVR sample efficiency analysis, refer to the dedicated research track in [`docs/research/harness-zero/mve_final_report.md`](research/harness-zero/mve_final_report.md) and [`docs/research/harness-zero/feasibility_study.md`](research/harness-zero/feasibility_study.md).
+> - For the Harness-Zero procedural distillation track and MVE reports, refer to [`docs/research/harness-zero/mve_final_report.md`](research/harness-zero/mve_final_report.md) and [`docs/research/harness-zero/feasibility_study.md`](research/harness-zero/feasibility_study.md).
+> - For OPDVR and GRPD policy distillation with verifiable reward gating (`make train-grpd` vs `make train-rlvr`), refer to the dedicated [`docs/opdvr_training_guide.md`](opdvr_training_guide.md) and [`docs/research/opdvr/README.md`](research/opdvr/README.md).
 
 ```
                       End-to-End Operational Pipeline Architecture

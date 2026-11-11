@@ -49,6 +49,12 @@ This directory contains the independent research documentation, technical feasib
    - Detailed component specifications, interfaces, and risk fallback matrix.
    - VRAM allocation profile demonstrating single-GPU (A100 / RTX 4090) feasibility.
 
+6. 📘 **[OPDVR & GRPD Operational Training Guide](../../opdvr_training_guide.md)**:
+   - Operational guide for CLI targets (`make train-rlvr` vs `make train-grpd`).
+   - Walkthrough of the unified execution engine (`scripts/train_rlvr.py` → `TRLGRPOAdapter` → `compute_policy_loss`).
+   - Verifiable Reward Engine ($\mathcal{R}_{\text{TS}}$) branching diagram and mathematical formulations for Vanilla OPD, Binary OPDVR, and GRPD.
+   - Command cookbook for dry runs and all 7 experimental conditions.
+
 ---
 
 ## High-Level Verdict Summary
