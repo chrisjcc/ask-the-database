@@ -80,7 +80,7 @@ class GRPOTrainingConfig:
         )
         if hasattr(dist_cfg, "_content") or hasattr(dist_cfg, "__dict__"):
             with contextlib.suppress(Exception):
-                dist_cfg = OmegaConf.to_container(dist_cfg, resolve=True)  # type: ignore[assignment]
+                dist_cfg = OmegaConf.to_container(dist_cfg, resolve=True)
         if not isinstance(dist_cfg, dict):
             dist_cfg = {}
 
@@ -659,7 +659,7 @@ class TRLGRPOAdapter(BaseRLAdapter):
 
         grad_norm = 0.0
         if telemetry.loss.requires_grad:
-            telemetry.loss.backward()
+            telemetry.loss.backward()  # type: ignore[no-untyped-call]
             if active_logps.grad is not None:
                 grad_norm = float(torch.norm(active_logps.grad).item())
 
