@@ -79,6 +79,7 @@ help:
 	@echo ""
 	@echo "Evaluation & Decision Gates:"
 	@echo "  make smoke-eval               Execute fast in-process zero-budget smoke check (< 38ms)"
+	@echo "  make smoke-opdvr              Execute 20-step OPDVR smoke validation on Zero-Budget Micro-Harness"
 	@echo "  make evaluate-zero-budget-mve Adjudicate 4-gate Zero-Budget Evaluation Micro-Harness"
 	@echo "  make evaluate                 Evaluate full benchmark suites (Spider, DK, Syn, Realistic)"
 	@echo "  make evaluate-spider2         Evaluate Spider 2.0-SQLite enterprise benchmark"
@@ -260,6 +261,9 @@ sweep:
 
 smoke-eval:
 	$(PYTHON) scripts/run_smoke_eval.py $(ARGS)
+
+smoke-opdvr:
+	$(PYTHON) scripts/run_opdvr_smoke_validation.py $(ARGS)
 
 evaluate-zero-budget-mve:
 	$(PYTHON) scripts/run_zero_budget_mve.py $(ARGS)
