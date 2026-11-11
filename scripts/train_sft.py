@@ -106,5 +106,46 @@ def main(cfg: DictConfig) -> None:
     logger.info("SFT Warmup completed successfully. Checkpoint saved to: %s", output_dir)
 
 
+def _normalize_cli_args() -> None:
+    """Normalize CLI arguments so common training parameters work with or without 'training.' prefix.
+
+    Uses Hydra's '++' (add-or-override) semantics to guarantee successful execution
+    regardless of whether a specific config group defines that key in its static struct.
+    """
+    import sys
+
+    top_level_groups = {
+        "environment",
+        "data",
+        "model",
+        "training",
+        "reward",
+        "evaluation",
+        "project_name",
+        "seed",
+        "dry_run",
+        "paths",
+        "sweeps",
+        "verification",
+        "hydra",
+    }
+
+    normalized_argv = [sys.argv[0]]
+    for arg in sys.argv[1:]:
+        if "=" in arg and not arg.startswith(("-", "@")):
+            clean_arg = arg.lstrip("+")
+            key = clean_arg.split("=")[0].strip()
+            root_key = key.split(".")[0].strip()
+            if root_key not in top_level_groups:
+                normalized_argv.append(f"++training.{clean_arg}")
+                continue
+            elif root_key == "training" and "." in key:
+                normalized_argv.append(f"++{clean_arg}")
+                continue
+        normalized_argv.append(arg)
+    sys.argv = normalized_argv
+
+
 if __name__ == "__main__":
+    _normalize_cli_args()
     main()
