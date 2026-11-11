@@ -1,5 +1,9 @@
 """Training and framework adapter modules."""
 
+from ask_the_database.training.action_masking import (
+    ActionMaskGenerator,
+    assert_zero_observation_leakage,
+)
 from ask_the_database.training.adapters.base import BaseRLAdapter, RolloutBatch
 from ask_the_database.training.dataset import (
     DEFAULT_SYSTEM_PROMPT,
@@ -8,6 +12,14 @@ from ask_the_database.training.dataset import (
     format_prompt_for_generation,
     load_sft_dataset,
 )
+from ask_the_database.training.losses import (
+    GRPDLoss,
+    OPDVRLoss,
+    compute_conflict_diagnostics,
+    compute_grpd_token_rewards,
+    compute_opdvr_token_rewards,
+)
+from ask_the_database.training.privileged_teacher import PrivilegedSchemaTeacher
 
 try:
     from ask_the_database.training.adapters.trl_grpo import (
@@ -31,4 +43,12 @@ __all__ = [
     "format_prompt_for_generation",
     "load_sft_dataset",
     "SFTWarmupPipeline",
+    "GRPDLoss",
+    "OPDVRLoss",
+    "compute_grpd_token_rewards",
+    "compute_opdvr_token_rewards",
+    "compute_conflict_diagnostics",
+    "PrivilegedSchemaTeacher",
+    "ActionMaskGenerator",
+    "assert_zero_observation_leakage",
 ]

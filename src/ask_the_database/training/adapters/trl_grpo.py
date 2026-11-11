@@ -4,6 +4,7 @@ Bridges between TRL GRPOTrainer policy rollouts and the SQLRewardRubric
 verifiable database verification engine, supporting DAPO and GSPO.
 """
 
+import contextlib
 import logging
 import math
 import os
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 class GRPOTrainingConfig:
     """Configuration for Group Relative Policy Optimization and enterprise variants (DAPO, GSPO)."""
 
-    algorithm: Literal["grpo", "dapo", "gspo"] = "dapo"
+    algorithm: Literal["grpo", "dapo", "gspo", "opd", "opdvr", "grpd"] = "dapo"
     enable_dynamic_sampling: bool = True
     min_reward_std: float = 1e-4
     dapo_clip_low: float = 0.20
@@ -49,6 +50,13 @@ class GRPOTrainingConfig:
     fp16: bool = False
     max_steps: int = -1
     output_dir: str = "models/rlvr/harness_zero_grpo"
+    distillation_enabled: bool = False
+    teacher_model_name_or_path: str = "Qwen/Qwen2.5-Coder-7B-Instruct"
+    share_base_model: bool = True
+    privileged_schema: bool = True
+    gating_mode: Literal["none", "relu", "inverse"] = "relu"
+    distillation_eps: float = 1e-8
+    max_ddl_tokens: int = 2500
     extra_kwargs: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -67,8 +75,24 @@ class GRPOTrainingConfig:
                 return default if val is None else val
             return default
 
+        dist_cfg = (
+            cfg.get("distillation", {}) if hasattr(cfg, "get") else getattr(cfg, "distillation", {})
+        )
+        if hasattr(dist_cfg, "_content") or hasattr(dist_cfg, "__dict__"):
+            with contextlib.suppress(Exception):
+                dist_cfg = OmegaConf.to_container(dist_cfg, resolve=True)
+        if not isinstance(dist_cfg, dict):
+            dist_cfg = {}
+
+        algo_val = str(get_val("algorithm", "dapo")).lower()
+        is_dist_algo = algo_val in ("opd", "opdvr", "grpd")
+        dist_enabled = bool(dist_cfg.get("enabled", is_dist_algo))
+        gating_mode_val = str(
+            dist_cfg.get("gating_mode", "none" if algo_val == "opd" else "relu")
+        ).lower()
+
         return cls(
-            algorithm=str(get_val("algorithm", "dapo")),  # type: ignore[arg-type]
+            algorithm=algo_val,  # type: ignore[arg-type]
             enable_dynamic_sampling=bool(get_val("enable_dynamic_sampling", True)),
             min_reward_std=float(get_val("min_reward_std", 1e-4)),
             dapo_clip_low=float(get_val("dapo_clip_low", 0.20)),
@@ -89,6 +113,15 @@ class GRPOTrainingConfig:
             fp16=bool(get_val("fp16", False)),
             max_steps=int(get_val("max_steps", -1)),
             output_dir=str(get_val("output_dir", "models/rlvr/harness_zero_grpo")),
+            distillation_enabled=dist_enabled,
+            teacher_model_name_or_path=str(
+                dist_cfg.get("teacher_model_name_or_path", "Qwen/Qwen2.5-Coder-7B-Instruct")
+            ),
+            share_base_model=bool(dist_cfg.get("share_base_model", True)),
+            privileged_schema=bool(dist_cfg.get("privileged_schema", True)),
+            gating_mode=gating_mode_val,  # type: ignore[arg-type]
+            distillation_eps=float(dist_cfg.get("eps", 1e-8)),
+            max_ddl_tokens=int(dist_cfg.get("max_ddl_tokens", 2500)),
         )
 
 
@@ -106,12 +139,22 @@ class PolicyLossTelemetry:
     clip_fraction_low: float = 0.0
     clip_fraction_high: float = 0.0
     algorithm: str = "dapo"
+    r_zero_ratio: float = 0.0
+    type1_conflict_ratio: float = 0.0
+    type2_conflict_ratio: float = 0.0
+    grad_norm: float = 0.0
+    tool_interaction_efficiency: float = 1.0
 
     def to_dict(self) -> dict[str, float]:
         """Convert telemetry metrics to dictionary."""
+        loss_val = (
+            float(self.loss.detach().item()) if hasattr(self.loss, "detach") else float(self.loss)
+        )
         return {
-            "loss": float(self.loss.detach().item()),
+            "loss": loss_val,
             "policy_loss": self.policy_loss,
+            "train/loss": loss_val,
+            "train/policy_loss": self.policy_loss,
             "train/filtered_groups_ratio": self.filtered_groups_ratio,
             "train/effective_tokens": float(self.effective_tokens),
             "train/active_groups": float(self.active_groups),
@@ -119,6 +162,15 @@ class PolicyLossTelemetry:
             "train/mean_seq_ratio": self.mean_seq_ratio,
             "train/clip_fraction_low": self.clip_fraction_low,
             "train/clip_fraction_high": self.clip_fraction_high,
+            "train/r_zero_ratio": self.r_zero_ratio,
+            "train/type1_conflict_ratio": self.type1_conflict_ratio,
+            "train/type2_conflict_ratio": self.type2_conflict_ratio,
+            "train/grad_norm": self.grad_norm,
+            "telemetry/r_zero_ratio": self.r_zero_ratio,
+            "telemetry/type1_conflict_ratio": self.type1_conflict_ratio,
+            "telemetry/type2_conflict_ratio": self.type2_conflict_ratio,
+            "telemetry/grad_norm": self.grad_norm,
+            "telemetry/tool_interaction_efficiency": self.tool_interaction_efficiency,
         }
 
 
@@ -165,6 +217,7 @@ def compute_policy_loss(
     rewards: torch.Tensor,
     group_size: int = 8,
     config: GRPOTrainingConfig | None = None,
+    action_mask: torch.Tensor | None = None,
 ) -> PolicyLossTelemetry:
     """Compute policy optimization loss across GRPO, DAPO, and GSPO algorithms.
 
@@ -175,6 +228,9 @@ def compute_policy_loss(
         rewards: Raw scalar rewards for each trajectory, shaped (B,).
         group_size: Number of generations G per prompt.
         config: GRPOTrainingConfig specifying algorithm and clipping hyperparameters.
+        action_mask: Optional binary mask isolating policy action/thought tokens (1)
+            from environment observation tokens (0). If provided, observation tokens
+            are strictly excluded from policy gradient updates.
 
     Returns:
         PolicyLossTelemetry with scalar loss and diagnostic statistics.
@@ -204,19 +260,23 @@ def compute_policy_loss(
     norm_advantages = norm_advantages * valid_groups.unsqueeze(-1).float()
     advantages = norm_advantages.view(b)  # (B,)
 
-    # 2. Token-level Log Ratio
+    # 2. Token-level Log Ratio with Multi-Turn Action Loss Masking
+    eff_mask = completion_mask if action_mask is None else (completion_mask * action_mask)
     token_log_ratio = per_token_logps - old_per_token_logps
-    token_log_ratio = token_log_ratio * completion_mask
+    token_log_ratio = token_log_ratio * eff_mask
     token_ratio = torch.exp(token_log_ratio)
 
     # 3. Active Masking
     group_mask = valid_groups.repeat_interleave(g).float()  # (B,)
-    token_active_mask = completion_mask * group_mask.unsqueeze(-1)  # (B, T)
+    token_active_mask = eff_mask * group_mask.unsqueeze(-1)  # (B, T)
     effective_tokens = int(token_active_mask.sum().item())
 
     mean_seq_ratio = 1.0
     clip_fraction_low = 0.0
     clip_fraction_high = 0.0
+    r_zero_ratio = 0.0
+    type1_conflict_ratio = 0.0
+    type2_conflict_ratio = 0.0
     adv_expanded = advantages.unsqueeze(-1)  # (B, 1)
 
     # 4. Objective Formulation Dispatch
@@ -269,8 +329,8 @@ def compute_policy_loss(
 
     elif algo == "gspo":
         # Group Sequence Policy Optimization (Length-normalized sequence ratio)
-        seq_lens = completion_mask.sum(dim=-1).clamp(min=1.0)  # (B,)
-        seq_mean_log_ratio = (token_log_ratio * completion_mask).sum(dim=-1) / seq_lens  # (B,)
+        seq_lens = eff_mask.sum(dim=-1).clamp(min=1.0)  # (B,)
+        seq_mean_log_ratio = (token_log_ratio * eff_mask).sum(dim=-1) / seq_lens  # (B,)
         seq_ratio = torch.exp(seq_mean_log_ratio)  # (B,)
 
         eps_s = config.gspo_seq_epsilon
@@ -294,6 +354,47 @@ def compute_policy_loss(
             denom_seq = max(1, num_active_samples)
             clip_fraction_low = float(low_clipped.sum().item() / denom_seq)
             clip_fraction_high = float(high_clipped.sum().item() / denom_seq)
+
+    elif algo in ("opd", "opdvr", "grpd"):
+        # Group Relative Policy Distillation with Verifiable Reward (OPDVR / GRPD)
+        from ask_the_database.training.losses import (
+            compute_conflict_diagnostics,
+            compute_grpd_token_rewards,
+        )
+
+        gating_mode = config.gating_mode
+        if algo == "opd":
+            gating_mode = "none"
+        elif algo in ("opdvr", "grpd") and gating_mode not in ("none", "relu", "inverse"):
+            gating_mode = "relu"
+
+        token_rewards = compute_grpd_token_rewards(
+            student_logprobs=per_token_logps,
+            teacher_logprobs=old_per_token_logps,
+            advantages=adv_expanded,
+            gating_mode=gating_mode,
+            eps=config.distillation_eps,
+        )
+        token_loss = -token_rewards * per_token_logps
+
+        if effective_tokens > 0:
+            loss = (token_loss * token_active_mask).sum() / float(effective_tokens)
+        else:
+            loss = 0.0 * per_token_logps.sum()
+
+        with torch.no_grad():
+            conf_diag = compute_conflict_diagnostics(
+                student_logprobs=per_token_logps,
+                teacher_logprobs=old_per_token_logps,
+                advantages=adv_expanded,
+                action_mask=token_active_mask,
+                token_rewards=token_rewards,
+                eps=config.distillation_eps,
+            )
+            r_zero_ratio = float(conf_diag.get("r_zero_ratio", 0.0))
+            type1_conflict_ratio = float(conf_diag.get("type1_conflict_ratio", 0.0))
+            type2_conflict_ratio = float(conf_diag.get("type2_conflict_ratio", 0.0))
+
     else:
         raise ValueError(f"Unsupported policy optimization algorithm: '{config.algorithm}'")
 
@@ -308,6 +409,9 @@ def compute_policy_loss(
         clip_fraction_low=clip_fraction_low,
         clip_fraction_high=clip_fraction_high,
         algorithm=algo,
+        r_zero_ratio=r_zero_ratio,
+        type1_conflict_ratio=type1_conflict_ratio,
+        type2_conflict_ratio=type2_conflict_ratio,
     )
 
 
@@ -323,6 +427,7 @@ class CustomGRPOTrainer(GRPOTrainer):
         input_ids = inputs["input_ids"]
         prompt_mask = inputs.get("prompt_mask")
         completion_mask = inputs.get("completion_mask")
+        action_mask = inputs.get("action_mask")
         rewards = inputs.get("rewards")
 
         if prompt_mask is None or completion_mask is None or rewards is None:
@@ -335,6 +440,11 @@ class CustomGRPOTrainer(GRPOTrainer):
         logits = outputs.logits[:, :-1, :]
         targets = input_ids[:, 1:]
         comp_mask = completion_mask[:, 1:]
+        act_mask = None
+        if action_mask is not None:
+            act_mask = (
+                action_mask[:, 1:] if action_mask.shape[1] == input_ids.shape[1] else action_mask
+            )
 
         logps = torch.log_softmax(logits, dim=-1)
         per_token_logps = torch.gather(logps, dim=-1, index=targets.unsqueeze(-1)).squeeze(-1)
@@ -353,6 +463,7 @@ class CustomGRPOTrainer(GRPOTrainer):
             rewards=rewards,
             group_size=group_size,
             config=self.grpo_training_config,
+            action_mask=act_mask,
         )
 
         # Log metrics to trainer tracker
@@ -377,15 +488,16 @@ class TRLGRPOAdapter(BaseRLAdapter):
     def __init__(
         self,
         config: DictConfig | GRPOTrainingConfig,
-        rubric: SQLRewardRubric,
+        rubric: SQLRewardRubric | None = None,
     ) -> None:
         """Initialize adapter with configuration and verifiable reward rubric."""
+        reward_rubric = rubric if rubric is not None else SQLRewardRubric()
         if isinstance(config, GRPOTrainingConfig):
             self.grpo_config = config
             hydra_cfg = OmegaConf.create({"training": config.__dict__})
-            super().__init__(hydra_cfg, rubric)
+            super().__init__(hydra_cfg, reward_rubric)
         else:
-            super().__init__(config, rubric)
+            super().__init__(config, reward_rubric)
             self.grpo_config = GRPOTrainingConfig.from_dict_config(config)
 
         self.output_dir = Path(self.grpo_config.output_dir)
@@ -497,7 +609,14 @@ class TRLGRPOAdapter(BaseRLAdapter):
             max_steps=cfg.max_steps,
         )
 
-    def train_step(self, batch: RolloutBatch, group_size: int | None = None) -> dict[str, float]:
+    def train_step(
+        self,
+        batch: RolloutBatch,
+        group_size: int | None = None,
+        action_mask: torch.Tensor | None = None,
+        teacher_logps: torch.Tensor | None = None,
+        tool_interaction_efficiency: float = 1.0,
+    ) -> dict[str, float]:
         """Execute reward scoring and compute telemetry metrics for the rollout batch."""
         rewards = self.compute_rewards(batch)
         n = len(rewards)
@@ -514,17 +633,38 @@ class TRLGRPOAdapter(BaseRLAdapter):
 
         # Construct dummy tensor logs for telemetry calculation
         rewards_t = torch.tensor(rewards, dtype=torch.float32)
-        dummy_logps = torch.zeros((n, 8), dtype=torch.float32)
-        dummy_mask = torch.ones((n, 8), dtype=torch.float32)
+        seq_len = action_mask.shape[1] if action_mask is not None else 8
+        dummy_logps = torch.zeros((n, seq_len), dtype=torch.float32)
+        dummy_mask = torch.ones((n, seq_len), dtype=torch.float32)
 
+        if teacher_logps is not None:
+            old_logps = teacher_logps
+        elif self.grpo_config.algorithm in ("opd", "opdvr", "grpd"):
+            # Provide non-identical teacher baseline to compute diagnostics under dummy inputs
+            old_logps = dummy_logps + 0.1
+        else:
+            old_logps = dummy_logps
+
+        # Enable gradient tracking on logps to compute policy gradient norm
+        active_logps = dummy_logps.clone().detach().requires_grad_(True)
         telemetry = compute_policy_loss(
-            per_token_logps=dummy_logps,
-            old_per_token_logps=dummy_logps,
+            per_token_logps=active_logps,
+            old_per_token_logps=old_logps,
             completion_mask=dummy_mask,
             rewards=rewards_t,
             group_size=g,
             config=self.grpo_config,
+            action_mask=action_mask,
         )
+
+        grad_norm = 0.0
+        if telemetry.loss.requires_grad:
+            telemetry.loss.backward()  # type: ignore[no-untyped-call]
+            if active_logps.grad is not None:
+                grad_norm = float(torch.norm(active_logps.grad).item())
+
+        telemetry.grad_norm = grad_norm
+        telemetry.tool_interaction_efficiency = tool_interaction_efficiency
 
         metrics = telemetry.to_dict()
         metrics.update(
@@ -538,6 +678,24 @@ class TRLGRPOAdapter(BaseRLAdapter):
         )
         return metrics
 
+    def initialize_teacher(self, model: Any | None = None, tokenizer: Any | None = None) -> None:
+        """Initialize PrivilegedSchemaTeacher if distillation is enabled."""
+        if self.grpo_config.distillation_enabled:
+            from ask_the_database.training.privileged_teacher import PrivilegedSchemaTeacher
+
+            self.teacher = PrivilegedSchemaTeacher(
+                model=model,
+                tokenizer=tokenizer,
+                is_shared_base=self.grpo_config.share_base_model,
+                max_ddl_tokens=self.grpo_config.max_ddl_tokens,
+            )
+            logger.info(
+                "Initialized PrivilegedSchemaTeacher for %s (gating=%s, shared_base=%s)",
+                self.grpo_config.algorithm.upper(),
+                self.grpo_config.gating_mode,
+                self.grpo_config.share_base_model,
+            )
+
     def save_checkpoint(self, output_dir: str) -> None:
         """Persist checkpoint adapter weights or training state."""
         out_path = Path(output_dir)
@@ -549,6 +707,9 @@ class TRLGRPOAdapter(BaseRLAdapter):
             "dapo_clip_low": self.grpo_config.dapo_clip_low,
             "dapo_clip_high": self.grpo_config.dapo_clip_high,
             "gspo_seq_epsilon": self.grpo_config.gspo_seq_epsilon,
+            "distillation_enabled": self.grpo_config.distillation_enabled,
+            "gating_mode": self.grpo_config.gating_mode,
+            "share_base_model": self.grpo_config.share_base_model,
         }
         import json
 
