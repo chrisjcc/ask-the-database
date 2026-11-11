@@ -32,6 +32,25 @@ from ask_the_database.training.dataset import load_sft_dataset
 logger = logging.getLogger(__name__)
 
 
+class SingleDeviceSFTConfig(SFTConfig):
+    """SFTConfig subclass ensuring n_gpu is clamped to 1 in single-process multi-GPU environments.
+
+    Prevents Hugging Face TRL SFTTrainer from raising:
+        ValueError("...does not support nn.DataParallel...")
+    when multiple GPUs are visible in single-process training.
+    Defining this class at module scope ensures full compatibility with Python pickle
+    and checkpoint saving (`torch.save(trainer.args, os.path.join(output_dir, TRAINING_ARGS_NAME))`).
+    """
+
+    @property
+    def n_gpu(self) -> int:
+        return 1
+
+    @n_gpu.setter
+    def n_gpu(self, value: int) -> None:
+        self._n_gpu = 1
+
+
 def validate_lora_config(lora_cfg: Any) -> None:
     """Validate LoRA / rsLoRA configuration parameters.
 
@@ -276,18 +295,20 @@ class RobustSFTTrainer(SFTTrainer):
                     getattr(training_args, "n_gpu", "unknown"),
                 )
             try:
-                training_args.__class__ = type(
-                    "SingleDeviceSFTConfig",
-                    (training_args.__class__,),
-                    {"n_gpu": property(lambda self: 1)},
-                )
+                training_args.__class__ = SingleDeviceSFTConfig
             except Exception as exc:
-                logger.debug("Could not rebind __class__ for n_gpu property: %s", exc)
+                logger.debug("Could not rebind __class__ for SingleDeviceSFTConfig: %s", exc)
             training_args._n_gpu = 1
 
         super().__init__(*args, **kwargs)
 
         if world_size <= 1 and local_rank == -1 and hasattr(self, "args") and self.args is not None:
+            try:
+                self.args.__class__ = SingleDeviceSFTConfig
+            except Exception as exc:
+                logger.debug(
+                    "Could not rebind self.args.__class__ for SingleDeviceSFTConfig: %s", exc
+                )
             self.args._n_gpu = 1
 
     def compute_loss(
@@ -645,13 +666,9 @@ class SFTWarmupPipeline:
         local_rank = int(os.environ.get("LOCAL_RANK", "-1"))
         if world_size <= 1 and local_rank == -1:
             try:
-                sft_args.__class__ = type(
-                    "SingleDeviceSFTConfig",
-                    (sft_args.__class__,),
-                    {"n_gpu": property(lambda self: 1)},
-                )
+                sft_args.__class__ = SingleDeviceSFTConfig
             except Exception as exc:
-                logger.debug("Could not rebind __class__ for n_gpu property on SFTConfig: %s", exc)
+                logger.debug("Could not rebind __class__ to SingleDeviceSFTConfig: %s", exc)
             sft_args._n_gpu = 1
 
         return sft_args
