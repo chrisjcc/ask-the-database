@@ -201,25 +201,25 @@ train-grpd:
 	$(PYTHON) scripts/train_rlvr.py training=rlvr_grpd $(ARGS)
 
 train-c0-sft:
-	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_sft.py training.dataset_path=data/distillation/reviewed_trajectories.jsonl training.output_dir=models/sft/c0_harness_zero $(ARGS)
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_sft.py ++training.dataset_path=data/distillation/reviewed_trajectories.jsonl ++training.output_dir=models/sft/c0_harness_zero $(ARGS)
 
 train-c1-grpo:
-	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_skyrl_agent training.algorithm=grpo training.output_dir=models/rlvr/c1_pure_grpo $(ARGS)
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_skyrl_agent ++training.algorithm=grpo ++training.output_dir=models/rlvr/c1_pure_grpo $(ARGS)
 
 train-c2-opd:
-	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_grpd training.algorithm=opd training.distillation.gating_mode=none training.output_dir=models/rlvr/c2_vanilla_opd $(ARGS)
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_grpd ++training.algorithm=opd ++training.distillation.gating_mode=none ++training.output_dir=models/rlvr/c2_vanilla_opd $(ARGS)
 
 train-c3-opdvr:
-	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_grpd training.algorithm=opdvr training.distillation.gating_mode=relu training.output_dir=models/rlvr/c3_binary_opdvr $(ARGS)
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_grpd ++training.algorithm=opdvr ++training.distillation.gating_mode=relu ++training.output_dir=models/rlvr/c3_binary_opdvr $(ARGS)
 
 train-c4-grpd:
-	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_grpd training.algorithm=grpd training.distillation.gating_mode=relu training.output_dir=models/rlvr/c4_grpd $(ARGS)
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_grpd ++training.algorithm=grpd ++training.distillation.gating_mode=relu ++training.output_dir=models/rlvr/c4_grpd $(ARGS)
 
 train-c5-inv-grpd:
-	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_grpd training.algorithm=grpd training.distillation.gating_mode=inverse training.output_dir=models/rlvr/c5_inv_grpd $(ARGS)
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_grpd ++training.algorithm=grpd ++training.distillation.gating_mode=inverse ++training.output_dir=models/rlvr/c5_inv_grpd $(ARGS)
 
 train-c6-priv-grpd:
-	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_grpd training.algorithm=grpd training.distillation.privileged_schema=true training.distillation.gating_mode=relu training.output_dir=models/rlvr/c6_priv_grpd $(ARGS)
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_grpd ++training.algorithm=grpd ++training.distillation.privileged_schema=true ++training.distillation.gating_mode=relu ++training.output_dir=models/rlvr/c6_priv_grpd $(ARGS)
 
 # ------------------------------------------------------------
 # 4. Hyperparameter Optimization (W&B Sweeps)
