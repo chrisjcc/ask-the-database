@@ -462,6 +462,40 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
     return telemetry
 
 
+def _normalize_cli_args() -> None:
+    """Normalize CLI arguments so common training parameters work with or without 'training.' prefix."""
+    import sys
+
+    top_level_groups = {
+        "environment",
+        "data",
+        "model",
+        "training",
+        "reward",
+        "evaluation",
+        "project_name",
+        "seed",
+        "dry_run",
+        "paths",
+        "sweeps",
+        "verification",
+        "hydra",
+    }
+
+    normalized_argv = [sys.argv[0]]
+    for arg in sys.argv[1:]:
+        if "=" in arg and not arg.startswith(("-", "@")):
+            prefix = "+" if arg.startswith("+") else ""
+            clean_arg = arg[1:] if arg.startswith("+") else arg
+            key = clean_arg.split("=")[0].strip()
+            root_key = key.split(".")[0].strip()
+            if root_key not in top_level_groups:
+                normalized_argv.append(f"{prefix}training.{clean_arg}")
+                continue
+        normalized_argv.append(arg)
+    sys.argv = normalized_argv
+
+
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def main(cfg: DictConfig) -> None:
     """Hydra CLI main entrypoint."""
@@ -470,4 +504,5 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
+    _normalize_cli_args()
     main()
