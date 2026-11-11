@@ -142,12 +142,19 @@ class PolicyLossTelemetry:
     r_zero_ratio: float = 0.0
     type1_conflict_ratio: float = 0.0
     type2_conflict_ratio: float = 0.0
+    grad_norm: float = 0.0
+    tool_interaction_efficiency: float = 1.0
 
     def to_dict(self) -> dict[str, float]:
         """Convert telemetry metrics to dictionary."""
+        loss_val = (
+            float(self.loss.detach().item()) if hasattr(self.loss, "detach") else float(self.loss)
+        )
         return {
-            "loss": float(self.loss.detach().item()),
+            "loss": loss_val,
             "policy_loss": self.policy_loss,
+            "train/loss": loss_val,
+            "train/policy_loss": self.policy_loss,
             "train/filtered_groups_ratio": self.filtered_groups_ratio,
             "train/effective_tokens": float(self.effective_tokens),
             "train/active_groups": float(self.active_groups),
@@ -158,6 +165,12 @@ class PolicyLossTelemetry:
             "train/r_zero_ratio": self.r_zero_ratio,
             "train/type1_conflict_ratio": self.type1_conflict_ratio,
             "train/type2_conflict_ratio": self.type2_conflict_ratio,
+            "train/grad_norm": self.grad_norm,
+            "telemetry/r_zero_ratio": self.r_zero_ratio,
+            "telemetry/type1_conflict_ratio": self.type1_conflict_ratio,
+            "telemetry/type2_conflict_ratio": self.type2_conflict_ratio,
+            "telemetry/grad_norm": self.grad_norm,
+            "telemetry/tool_interaction_efficiency": self.tool_interaction_efficiency,
         }
 
 
@@ -375,6 +388,7 @@ def compute_policy_loss(
                 teacher_logprobs=old_per_token_logps,
                 advantages=adv_expanded,
                 action_mask=token_active_mask,
+                token_rewards=token_rewards,
                 eps=config.distillation_eps,
             )
             r_zero_ratio = float(conf_diag.get("r_zero_ratio", 0.0))
@@ -601,6 +615,7 @@ class TRLGRPOAdapter(BaseRLAdapter):
         group_size: int | None = None,
         action_mask: torch.Tensor | None = None,
         teacher_logps: torch.Tensor | None = None,
+        tool_interaction_efficiency: float = 1.0,
     ) -> dict[str, float]:
         """Execute reward scoring and compute telemetry metrics for the rollout batch."""
         rewards = self.compute_rewards(batch)
@@ -630,8 +645,10 @@ class TRLGRPOAdapter(BaseRLAdapter):
         else:
             old_logps = dummy_logps
 
+        # Enable gradient tracking on logps to compute policy gradient norm
+        active_logps = dummy_logps.clone().detach().requires_grad_(True)
         telemetry = compute_policy_loss(
-            per_token_logps=dummy_logps,
+            per_token_logps=active_logps,
             old_per_token_logps=old_logps,
             completion_mask=dummy_mask,
             rewards=rewards_t,
@@ -639,6 +656,15 @@ class TRLGRPOAdapter(BaseRLAdapter):
             config=self.grpo_config,
             action_mask=action_mask,
         )
+
+        grad_norm = 0.0
+        if telemetry.loss.requires_grad:
+            telemetry.loss.backward()
+            if active_logps.grad is not None:
+                grad_norm = float(torch.norm(active_logps.grad).item())
+
+        telemetry.grad_norm = grad_norm
+        telemetry.tool_interaction_efficiency = tool_interaction_efficiency
 
         metrics = telemetry.to_dict()
         metrics.update(

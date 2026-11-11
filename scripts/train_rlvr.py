@@ -216,7 +216,7 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
 
     report_to = str(training_cfg.get("report_to", "none")).lower()
     wandb_run = None
-    if report_to == "wandb":
+    if report_to in ("wandb", "wandb_and_weave", "all"):
         try:
             import wandb
 
@@ -233,6 +233,25 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                 e,
             )
 
+    if report_to in ("weave", "wandb_and_weave", "all") or bool(
+        training_cfg.get("weave", {}).get("enabled", False)
+    ):
+        try:
+            import weave
+
+            project_name = str(
+                training_cfg.get("weave", {}).get(
+                    "project", getattr(cfg, "project_name", "ask-the-database")
+                )
+            )
+            weave.init(project_name)
+            logger.info("Initialized Weave tracking project: %s", project_name)
+        except Exception as e:
+            logger.warning(
+                "Failed to initialize Weave: %s. Continuing without weave.",
+                e,
+            )
+
     logging_steps = int(getattr(training_cfg, "logging_steps", 5))
     save_steps = int(getattr(training_cfg, "save_steps", 50))
     total_steps = max_steps if max_steps > 0 else min(len(instances), 250)
@@ -242,13 +261,18 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
         rollout_rewards: list[float] = []
         completions: list[str] = []
         rollout_histories: list[list[dict[str, Any]]] = []
+        total_turns = 0
+        total_tool_calls = 0
+        failed_tool_calls = 0
 
         for _ in range(num_rollouts):
             env.reset(instance)
             done = False
             r = 0.0
             last_action = ""
+            turn_count = 0
             while not done:
+                turn_count += 1
                 tables = env.registry.schema_manager.get_tables() if env.registry else None
                 sampling_temp = float(getattr(training_cfg, "temperature", 0.7))
                 action = pipeline.generate_step(
@@ -259,10 +283,21 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                     temperature=sampling_temp,
                 )
                 last_action = action
-                _, r, done, _ = env.step(action)
+                obs, r, done, _ = env.step(action)
+                if "<tool" in action or "<tool_call>" in action:
+                    total_tool_calls += 1
+                    obs_lower = obs.lower()
+                    if "error" in obs_lower or "syntax" in obs_lower or "no such" in obs_lower:
+                        failed_tool_calls += 1
+
+            total_turns += turn_count
             rollout_rewards.append(r)
             completions.append(last_action)
             rollout_histories.append(list(env.history))
+
+        avg_turns = total_turns / max(1, num_rollouts)
+        err_rate = failed_tool_calls / max(1, total_tool_calls)
+        tool_efficiency = float(max(0.0, 1.0 - err_rate) / (1.0 + 0.1 * avg_turns))
 
         batch = RolloutBatch(
             prompts=[instance.get("question", "")] * num_rollouts,
@@ -304,6 +339,7 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
             batch,
             action_mask=batch_action_mask,
             teacher_logps=batch_teacher_logps,
+            tool_interaction_efficiency=tool_efficiency,
         )
 
         advantages = compute_group_normalized_rewards(rollout_rewards, group_size=num_rollouts)
@@ -328,7 +364,7 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
         if (step + 1) % logging_steps == 0 or step == 0 or (step + 1) == total_steps:
             if adapter.grpo_config.distillation_enabled:
                 logger.info(
-                    "Step %d/%d (%.1f%%) [%s] — Mean Reward: %.4f | Policy Loss: %.4f | Filtered: %.1f%% | Effective Tokens: %d | R0: %.2f | T1 Conf: %.2f | T2 Conf: %.2f | Advantages: %s",
+                    "Step %d/%d (%.1f%%) [%s] — Mean Reward: %.4f | Policy Loss: %.4f | Filtered: %.1f%% | Effective Tokens: %d | R0: %.2f | T1 Conf: %.2f | T2 Conf: %.2f | Grad Norm: %.3f | Tool Eff: %.2f | Advantages: %s",
                     step + 1,
                     total_steps,
                     ((step + 1) / total_steps) * 100,
@@ -340,6 +376,8 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
                     step_metrics.get("r_zero_ratio", 0.0),
                     step_metrics.get("type1_conflict_ratio", 0.0),
                     step_metrics.get("type2_conflict_ratio", 0.0),
+                    step_metrics.get("telemetry/grad_norm", 0.0),
+                    step_metrics.get("telemetry/tool_interaction_efficiency", 1.0),
                     [round(a, 3) for a in advantages[:4]],
                 )
             else:
