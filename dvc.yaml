@@ -30,3 +30,15 @@ stages:
       - sft.lora.r
     outs:
       - models/sft/final
+
+  train-grpd:
+    cmd: python scripts/train_rlvr.py training=rlvr_grpd
+    deps:
+      - configs/training/rlvr_grpd.yaml
+      - scripts/train_rlvr.py
+      - src/ask_the_database/training/adapters/trl_grpo.py
+      - src/ask_the_database/training/privileged_teacher.py
+      - src/ask_the_database/training/action_masking.py
+      - src/ask_the_database/training/losses.py
+    outs:
+      - models/rlvr/grpd_final

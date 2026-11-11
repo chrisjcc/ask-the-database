@@ -30,7 +30,7 @@ DATASET_REPO ?= chrisjcc/ask-the-database
         install install-dev lint format test setup-hooks \
         download-spider1 preprocess collect-distillation download-spider2-dbt convert-spider2-dbt test-spider2-dbt \
         download-spider2-lite prepare-spider2-sqlite dvc-repro \
-        train-sft train-filtered train-harness-zero train-grpo train-dapo train-gspo \
+        train-sft train-filtered train-harness-zero train-grpo train-dapo train-gspo train-rlvr train-grpd \
         sweep \
         smoke-eval evaluate-zero-budget-mve evaluate evaluate-spider2 test-spider2-eval evaluate-mve compare-rlvr evaluate-verifier-mve \
         compile-paper \
@@ -71,6 +71,8 @@ help:
 	@echo "  make train-grpo               Execute multi-turn GRPO / RLVR verifiable training (Cond 5)"
 	@echo "  make train-dapo               Execute multi-turn DAPO enterprise training (Cond 6)"
 	@echo "  make train-gspo               Execute multi-turn GSPO enterprise training (Cond 7)"
+	@echo "  make train-rlvr               Execute multi-turn RLVR training"
+	@echo "  make train-grpd               Execute multi-turn GRPD / OPDVR distillation training"
 	@echo ""
 	@echo "Hyperparameter Optimization (W&B Sweeps):"
 	@echo "  make sweep                    Launch W&B Bayesian hyperparameter sweep (FINE_TUNE_METHOD=<sft|grpo>)"
@@ -182,6 +184,12 @@ train-dapo:
 
 train-gspo:
 	$(PYTHON) scripts/train_rlvr.py training=gspo_enterprise $(ARGS)
+
+train-rlvr:
+	$(PYTHON) scripts/train_rlvr.py $(ARGS)
+
+train-grpd:
+	$(PYTHON) scripts/train_rlvr.py training=rlvr_grpd $(ARGS)
 
 # ------------------------------------------------------------
 # 4. Hyperparameter Optimization (W&B Sweeps)
