@@ -427,7 +427,19 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
             # Persist model adapter weights and tokenizer if pipeline has them loaded
             if pipeline.model is not None:
                 try:
-                    pipeline.model.save_pretrained(out_path)
+                    # Guard against serializing a duplicate 15GB base model onto disk.
+                    # Only call save_pretrained if the model is a PEFT adapter or explicit full save is enabled.
+                    is_peft = hasattr(pipeline.model, "peft_config") or hasattr(
+                        pipeline.model, "active_adapter"
+                    )
+                    save_full_model = bool(training_cfg.get("save_full_model", False))
+                    if is_peft or save_full_model:
+                        pipeline.model.save_pretrained(out_path)
+                    else:
+                        logger.info(
+                            "Base model is not a PEFT adapter; preserving base checkpoint reference in rlvr_policy_config.json without duplicating 15GB weights to %s.",
+                            out_path,
+                        )
                 except Exception as e:
                     logger.warning("Could not save model to %s: %s", out_path, e)
             elif Path(str(model_path)).is_dir():
