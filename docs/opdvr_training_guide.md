@@ -218,3 +218,66 @@ Verify pipeline dependency tracking at any time:
 ```bash
 dvc repro --dry
 ```
+
+---
+
+## 7. Post-Training Evaluation & Benchmarking Workflow
+
+Once training runs (C0 through C6) have produced checkpoints under `models/`, run the following evaluation and comparison workflows:
+
+### A. Full 7-Condition Comparative PoC & Hypothesis Adjudication
+To compile the comparative analysis across all 7 conditions, adjudicate scientific hypotheses H1–H4, and update the research documentation:
+```bash
+make compare-opdvr
+```
+- **CLI Script**: `python scripts/run_opdvr_comparative_benchmark.py`
+- **Structured JSON Output**: `results/opdvr_comparative_results.json`
+- **Markdown Report**: `docs/research/opdvr/results_report.md`
+- **Automated Gates**: Adjudicates H1 (Sample Efficiency $\ge +4.0$ pp at Step 100), H2 (Stalls $< 5$ on Extra Hard), H3 (AST diversity $\ge 2.5\times$), and H4 (Privileged 7B $\ge 98.0\%$ of 14B).
+
+### B. Benchmarking Individual Condition Checkpoints on Spider Dev ($N=1,034$)
+To evaluate a specific condition checkpoint on the complete Spider development split:
+```bash
+# Evaluate Condition C0 (Harness-Zero SFT)
+make evaluate ARGS="evaluation.model_path=models/sft/c0_harness_zero evaluation.summary_file=results/eval_c0.json"
+
+# Evaluate Condition C1 (Pure RLVR GRPO)
+make evaluate ARGS="evaluation.model_path=models/rlvr/c1_pure_grpo evaluation.summary_file=results/eval_c1.json"
+
+# Evaluate Condition C2 (Vanilla OPD)
+make evaluate ARGS="evaluation.model_path=models/rlvr/c2_vanilla_opd evaluation.summary_file=results/eval_c2.json"
+
+# Evaluate Condition C3 (Binary OPDVR)
+make evaluate ARGS="evaluation.model_path=models/rlvr/c3_binary_opdvr evaluation.summary_file=results/eval_c3.json"
+
+# Evaluate Condition C4 (Full GRPD - Proposed Target)
+make evaluate ARGS="evaluation.model_path=models/rlvr/c4_grpd evaluation.summary_file=results/eval_c4.json"
+
+# Evaluate Condition C5 (Inverted GRPD - Negative Control)
+make evaluate ARGS="evaluation.model_path=models/rlvr/c5_inv_grpd evaluation.summary_file=results/eval_c5.json"
+
+# Evaluate Condition C6 (Privileged Schema GRPD)
+make evaluate ARGS="evaluation.model_path=models/rlvr/c6_priv_grpd evaluation.summary_file=results/eval_c6.json"
+```
+
+### C. Enterprise Multi-Table Evaluation on Spider 2.0-SQLite
+To evaluate multi-turn dialect resilience and CTE joins on complex real-world enterprise databases:
+```bash
+make evaluate-spider2 ARGS="evaluation.model_path=models/rlvr/c4_grpd"
+```
+
+### D. Zero-Budget In-Memory Smoke Verification (< 1s)
+Run deterministic verification across the 35 golden trap categories to verify SQLite engine stability:
+```bash
+make smoke-eval
+# Or with explicit golden gate:
+python scripts/run_smoke_eval.py --golden
+```
+
+### E. Re-Compiling the Research White Paper
+To recompile the ICML white paper (`papers/draft/main.tex`) embedding Table 4 and Section 7.6 with updated empirical metrics:
+```bash
+make compile-paper
+```
+Output: `papers/draft/main.pdf` (21 pages).
+
