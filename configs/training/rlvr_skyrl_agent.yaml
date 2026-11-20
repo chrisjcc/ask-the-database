@@ -4,6 +4,8 @@
 # Configuration for multi-turn reinforcement learning with verifiable rewards (RLVR)
 # in the SkyRLSQLEnvironment (interactive schema inspection, execution, recovery).
 
+algorithm: "grpo"  # Options: "grpo", "dapo", "gspo", "opd", "opdvr", "grpd"
+
 # --- Global & Paths ---
 model_path: "models/sft/final"             # Seed policy checkpoint (SFT baseline or Harness-Zero)
 output_dir: "models/rlvr/final"            # Directory to save trained policy checkpoints
