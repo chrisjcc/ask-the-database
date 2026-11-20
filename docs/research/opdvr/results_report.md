@@ -1,6 +1,6 @@
 # Empirical Benchmark Findings & 7-Condition Comparative Report: OPDVR / GRPD
 
-**Generated**: 2026-11-11T19:52:15.901915+00:00  
+**Generated**: 2026-11-20T20:10:10.088566+00:00  
 **Assessment Project**: **AskTheDatabase**  
 **Target Benchmark**: Spider 1.0 Development Split (1,034 queries across 20 SQLite databases)  
 **Hypothesis Adjudication Status**: **PASSED**  
@@ -78,4 +78,4 @@ make train-c6-priv-grpd
 
 # 5. Run Full 7-Condition Comparative Evaluation
 make compare-opdvr
-```
+```%                 
