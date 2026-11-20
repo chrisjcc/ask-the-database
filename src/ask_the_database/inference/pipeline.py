@@ -155,7 +155,7 @@ class NL2SQLPipeline:
                     torch.set_num_threads(min(8, num_cpus))
 
             path_obj = Path(self.model_path)
-            target_path = path_obj
+            target_path: Path | str = path_obj
 
             if path_obj.exists():
                 # If this is an RLVR output directory without local adapter weights, inspect rlvr_policy_config.json
@@ -165,21 +165,73 @@ class NL2SQLPipeline:
                     and not (path_obj / "config.json").exists()
                 ):
                     policy_conf_path = path_obj / "rlvr_policy_config.json"
+                    underlying: str | None = None
                     if policy_conf_path.exists():
-                        with open(policy_conf_path, encoding="utf-8") as f:
-                            policy_conf = json.load(f)
-                        underlying = policy_conf.get("model_path")
-                        if underlying and Path(underlying).exists():
-                            target_path = Path(underlying)
-                            logging.getLogger(__name__).info(
-                                "Resolved RLVR checkpoint '%s' to underlying policy '%s'",
-                                self.model_path,
-                                target_path,
-                            )
+                        with contextlib.suppress(Exception):
+                            with open(policy_conf_path, encoding="utf-8") as f:
+                                policy_conf = json.load(f)
+                            underlying = policy_conf.get("model_path")
+
+                    if not underlying:
+                        grpo_conf_path = path_obj / "grpo_adapter_config.json"
+                        if grpo_conf_path.exists():
+                            with contextlib.suppress(Exception):
+                                with open(grpo_conf_path, encoding="utf-8") as f:
+                                    grpo_conf = json.load(f)
+                                underlying = grpo_conf.get("teacher_model_name_or_path")
+
+                    def _is_valid_model_dir(p: Path) -> bool:
+                        return (p / "adapter_config.json").exists() or (p / "config.json").exists()
+
+                    # Resolve underlying path or Hub identifier
+                    resolved: Path | str | None = None
+                    cand_p = Path(underlying) if underlying else None
+
+                    if cand_p and cand_p.exists() and _is_valid_model_dir(cand_p):
+                        resolved = cand_p
+                    elif (
+                        underlying
+                        and len(Path(underlying).parts) == 2
+                        and Path(underlying).parts[0]
+                        not in ("models", "checkpoints", "outputs", "data", "src", "scripts", "tmp")
+                    ):
+                        # Hugging Face Hub identifier (e.g. "Qwen/Qwen2.5-Coder-7B-Instruct")
+                        resolved = str(underlying)
+                    else:
+                        for fb in [
+                            cand_p,
+                            Path("models/sft/c0_harness_zero"),
+                            Path("models/sft/final"),
+                            Path("models/sft/harness_zero"),
+                        ]:
+                            if fb is not None and fb.exists() and _is_valid_model_dir(fb):
+                                resolved = fb
+                                break
+
+                    if resolved is None:
+                        resolved = "Qwen/Qwen2.5-Coder-7B-Instruct"
+
+                    target_path = resolved
+                    logging.getLogger(__name__).info(
+                        "Resolved RLVR checkpoint '%s' to underlying policy/base model '%s'",
+                        self.model_path,
+                        target_path,
+                    )
+
+                # Check if tokenizer exists directly in the checkpoint directory
+                if (path_obj / "tokenizer_config.json").exists() or (
+                    path_obj / "tokenizer.json"
+                ).exists():
+                    with contextlib.suppress(Exception):
+                        self.tokenizer = AutoTokenizer.from_pretrained(
+                            str(path_obj), trust_remote_code=True
+                        )
 
                 # Check if target is a PEFT adapter directory
                 adapter_conf_path = (
-                    target_path / "adapter_config.json" if target_path.is_dir() else None
+                    target_path / "adapter_config.json"
+                    if isinstance(target_path, Path) and target_path.is_dir()
+                    else None
                 )
                 if adapter_conf_path and adapter_conf_path.exists():
                     with open(adapter_conf_path, encoding="utf-8") as f:
@@ -188,9 +240,10 @@ class NL2SQLPipeline:
                         "base_model_name_or_path", "Qwen/Qwen2.5-Coder-7B-Instruct"
                     )
                     _check_hardware_guardrail(base_model_name)
-                    self.tokenizer = AutoTokenizer.from_pretrained(
-                        base_model_name, trust_remote_code=True
-                    )
+                    if self.tokenizer is None:
+                        self.tokenizer = AutoTokenizer.from_pretrained(
+                            base_model_name, trust_remote_code=True
+                        )
                     base_model = AutoModelForCausalLM.from_pretrained(
                         base_model_name,
                         torch_dtype=self.torch_dtype or torch.bfloat16,
@@ -200,9 +253,10 @@ class NL2SQLPipeline:
                     self.model = PeftModel.from_pretrained(base_model, str(target_path))
                 else:
                     _check_hardware_guardrail(str(target_path))
-                    self.tokenizer = AutoTokenizer.from_pretrained(
-                        str(target_path), trust_remote_code=True
-                    )
+                    if self.tokenizer is None:
+                        self.tokenizer = AutoTokenizer.from_pretrained(
+                            str(target_path), trust_remote_code=True
+                        )
                     self.model = AutoModelForCausalLM.from_pretrained(
                         str(target_path),
                         torch_dtype=self.torch_dtype or torch.bfloat16,

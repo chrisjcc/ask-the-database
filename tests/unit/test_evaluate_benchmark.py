@@ -1,6 +1,7 @@
 """Unit tests for NL2SQLPipeline and comprehensive benchmark evaluation harness."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -118,5 +119,102 @@ def test_nl2sql_pipeline_resolves_rlvr_policy_config(
 
     assert pipe.model_path == str(rlvr_dir)
     assert pipe.tokenizer is mock_tok
+    assert pipe.model is mock_peft
+    assert pipe.load_error is None
+
+
+def test_nl2sql_pipeline_resolves_rlvr_hub_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test NL2SQLPipeline resolves underlying checkpoint pointing to a Hugging Face Hub repo ID."""
+    import json
+    from unittest.mock import MagicMock
+
+    import transformers
+
+    monkeypatch.setenv("FORCE_CPU_MODEL_LOAD", "1")
+
+    # Mock an RLVR directory that only has rlvr_policy_config.json pointing to Hub ID
+    rlvr_dir = tmp_path / "models" / "rlvr" / "c1_pure_grpo"
+    rlvr_dir.mkdir(parents=True)
+    (rlvr_dir / "rlvr_policy_config.json").write_text(
+        json.dumps(
+            {
+                "adapter": "SkyRLSQLEnvironment",
+                "model_path": "Qwen/Qwen2.5-Coder-7B-Instruct",
+                "max_turns": 5,
+                "steps": 250,
+            }
+        )
+    )
+
+    mock_tok = MagicMock()
+    mock_model = MagicMock()
+
+    loaded_names: list[str] = []
+
+    def mock_causal_lm(model_id: str, *a: Any, **kw: Any) -> MagicMock:
+        loaded_names.append(model_id)
+        return mock_model
+
+    monkeypatch.setattr(transformers.AutoTokenizer, "from_pretrained", lambda *a, **kw: mock_tok)
+    monkeypatch.setattr(transformers.AutoModelForCausalLM, "from_pretrained", mock_causal_lm)
+
+    pipe = NL2SQLPipeline(model_path=str(rlvr_dir))
+
+    assert pipe.model_path == str(rlvr_dir)
+    assert pipe.tokenizer is mock_tok
+    assert pipe.model is mock_model
+    assert pipe.load_error is None
+    assert "Qwen/Qwen2.5-Coder-7B-Instruct" in loaded_names
+
+
+def test_nl2sql_pipeline_resolves_rlvr_fallback_sft(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test NL2SQLPipeline falls back to c0_harness_zero when models/sft/final is non-existent."""
+    import json
+    from unittest.mock import MagicMock
+
+    import peft
+    import transformers
+
+    # Mock an SFT adapter directory at c0_harness_zero
+    sft_dir = tmp_path / "models" / "sft" / "c0_harness_zero"
+    sft_dir.mkdir(parents=True)
+    (sft_dir / "adapter_config.json").write_text(
+        json.dumps({"base_model_name_or_path": "mock_base", "peft_type": "LORA"})
+    )
+
+    # Mock an RLVR directory that points to models/sft/final (which doesn't exist)
+    rlvr_dir = tmp_path / "models" / "rlvr" / "c1_pure_grpo"
+    rlvr_dir.mkdir(parents=True)
+    (rlvr_dir / "rlvr_policy_config.json").write_text(
+        json.dumps(
+            {
+                "adapter": "SkyRLSQLEnvironment",
+                "model_path": "models/sft/final",
+                "max_turns": 5,
+                "steps": 250,
+            }
+        )
+    )
+
+    # Monkeypatch the fallback search to use tmp_path
+    monkeypatch.chdir(tmp_path)
+
+    mock_tok = MagicMock()
+    mock_model = MagicMock()
+    mock_peft = MagicMock()
+
+    monkeypatch.setattr(transformers.AutoTokenizer, "from_pretrained", lambda *a, **kw: mock_tok)
+    monkeypatch.setattr(
+        transformers.AutoModelForCausalLM, "from_pretrained", lambda *a, **kw: mock_model
+    )
+    monkeypatch.setattr(peft.PeftModel, "from_pretrained", lambda *a, **kw: mock_peft)
+
+    pipe = NL2SQLPipeline(model_path=str(rlvr_dir))
+
+    assert pipe.model_path == str(rlvr_dir)
     assert pipe.model is mock_peft
     assert pipe.load_error is None
