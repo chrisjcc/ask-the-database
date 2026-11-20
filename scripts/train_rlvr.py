@@ -427,7 +427,19 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
             # Persist model adapter weights and tokenizer if pipeline has them loaded
             if pipeline.model is not None:
                 try:
-                    pipeline.model.save_pretrained(out_path)
+                    # Guard against serializing a duplicate 15GB base model onto disk.
+                    # Only call save_pretrained if the model is a PEFT adapter or explicit full save is enabled.
+                    is_peft = hasattr(pipeline.model, "peft_config") or hasattr(
+                        pipeline.model, "active_adapter"
+                    )
+                    save_full_model = bool(training_cfg.get("save_full_model", False))
+                    if is_peft or save_full_model:
+                        pipeline.model.save_pretrained(out_path)
+                    else:
+                        logger.info(
+                            "Base model is not a PEFT adapter; preserving base checkpoint reference in rlvr_policy_config.json without duplicating 15GB weights to %s.",
+                            out_path,
+                        )
                 except Exception as e:
                     logger.warning("Could not save model to %s: %s", out_path, e)
             elif Path(str(model_path)).is_dir():
@@ -462,6 +474,46 @@ def run_rlvr_training(cfg: DictConfig) -> dict[str, Any]:
     return telemetry
 
 
+def _normalize_cli_args() -> None:
+    """Normalize CLI arguments so common training parameters work with or without 'training.' prefix.
+
+    Uses Hydra's '++' (add-or-override) semantics to guarantee successful execution
+    regardless of whether a specific config group defines that key in its static struct.
+    """
+    import sys
+
+    top_level_groups = {
+        "environment",
+        "data",
+        "model",
+        "training",
+        "reward",
+        "evaluation",
+        "project_name",
+        "seed",
+        "dry_run",
+        "paths",
+        "sweeps",
+        "verification",
+        "hydra",
+    }
+
+    normalized_argv = [sys.argv[0]]
+    for arg in sys.argv[1:]:
+        if "=" in arg and not arg.startswith(("-", "@")):
+            clean_arg = arg.lstrip("+")
+            key = clean_arg.split("=")[0].strip()
+            root_key = key.split(".")[0].strip()
+            if root_key not in top_level_groups:
+                normalized_argv.append(f"++training.{clean_arg}")
+                continue
+            elif root_key == "training" and "." in key:
+                normalized_argv.append(f"++{clean_arg}")
+                continue
+        normalized_argv.append(arg)
+    sys.argv = normalized_argv
+
+
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def main(cfg: DictConfig) -> None:
     """Hydra CLI main entrypoint."""
@@ -470,4 +522,5 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
+    _normalize_cli_args()
     main()

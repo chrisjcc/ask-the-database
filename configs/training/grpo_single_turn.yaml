@@ -4,6 +4,8 @@
 # Configuration for single-turn reinforcement learning using Group Relative
 # Policy Optimization (GRPO) with verifiable SQLite test-suite rewards.
 
+algorithm: "grpo"  # Options: "grpo", "dapo", "gspo", "opd", "opdvr", "grpd"
+
 # --- Global & Paths ---
 output_dir: "models/grpo_baseline/final"   # Directory to save model checkpoints
 

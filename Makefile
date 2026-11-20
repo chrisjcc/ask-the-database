@@ -73,6 +73,13 @@ help:
 	@echo "  make train-gspo               Execute multi-turn GSPO enterprise training (Cond 7)"
 	@echo "  make train-rlvr               Execute multi-turn RLVR training"
 	@echo "  make train-grpd               Execute multi-turn GRPD / OPDVR distillation training"
+	@echo "  make train-c0-sft             Execute C0 SFT Harness-Zero training on single GPU"
+	@echo "  make train-c1-grpo            Execute C1 Pure RLVR GRPO training on single GPU"
+	@echo "  make train-c2-opd             Execute C2 Vanilla OPD+GRPO training on single GPU"
+	@echo "  make train-c3-opdvr           Execute C3 Binary OPDVR training on single GPU"
+	@echo "  make train-c4-grpd            Execute C4 Full GRPD training on single GPU (Proposed)"
+	@echo "  make train-c5-inv-grpd        Execute C5 Inverted GRPD ablation on single GPU"
+	@echo "  make train-c6-priv-grpd       Execute C6 Privileged Schema GRPD on single GPU"
 	@echo ""
 	@echo "Hyperparameter Optimization (W&B Sweeps):"
 	@echo "  make sweep                    Launch W&B Bayesian hyperparameter sweep (FINE_TUNE_METHOD=<sft|grpo>)"
@@ -80,6 +87,7 @@ help:
 	@echo "Evaluation & Decision Gates:"
 	@echo "  make smoke-eval               Execute fast in-process zero-budget smoke check (< 38ms)"
 	@echo "  make smoke-opdvr              Execute 20-step OPDVR smoke validation on Zero-Budget Micro-Harness"
+	@echo "  make compare-opdvr            Execute 7-condition OPDVR comparative PoC benchmark"
 	@echo "  make evaluate-zero-budget-mve Adjudicate 4-gate Zero-Budget Evaluation Micro-Harness"
 	@echo "  make evaluate                 Evaluate full benchmark suites (Spider, DK, Syn, Realistic)"
 	@echo "  make evaluate-spider2         Evaluate Spider 2.0-SQLite enterprise benchmark"
@@ -192,6 +200,27 @@ train-rlvr:
 train-grpd:
 	$(PYTHON) scripts/train_rlvr.py training=rlvr_grpd $(ARGS)
 
+train-c0-sft:
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_sft.py ++training.dataset_path=data/distillation/reviewed_trajectories.jsonl ++training.output_dir=models/sft/c0_harness_zero $(ARGS)
+
+train-c1-grpo:
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_skyrl_agent ++training.algorithm=grpo ++training.output_dir=models/rlvr/c1_pure_grpo $(ARGS)
+
+train-c2-opd:
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_grpd ++training.algorithm=opd ++training.distillation.gating_mode=none ++training.output_dir=models/rlvr/c2_vanilla_opd $(ARGS)
+
+train-c3-opdvr:
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_grpd ++training.algorithm=opdvr ++training.distillation.gating_mode=relu ++training.output_dir=models/rlvr/c3_binary_opdvr $(ARGS)
+
+train-c4-grpd:
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_grpd ++training.algorithm=grpd ++training.distillation.gating_mode=relu ++training.output_dir=models/rlvr/c4_grpd $(ARGS)
+
+train-c5-inv-grpd:
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_grpd ++training.algorithm=grpd ++training.distillation.gating_mode=inverse ++training.output_dir=models/rlvr/c5_inv_grpd $(ARGS)
+
+train-c6-priv-grpd:
+	CUDA_VISIBLE_DEVICES=$${CUDA_VISIBLE_DEVICES:-0} $(PYTHON) scripts/train_rlvr.py training=rlvr_grpd ++training.algorithm=grpd ++training.distillation.privileged_schema=true ++training.distillation.gating_mode=relu ++training.output_dir=models/rlvr/c6_priv_grpd $(ARGS)
+
 # ------------------------------------------------------------
 # 4. Hyperparameter Optimization (W&B Sweeps)
 # ------------------------------------------------------------
@@ -264,6 +293,9 @@ smoke-eval:
 
 smoke-opdvr:
 	$(PYTHON) scripts/run_opdvr_smoke_validation.py $(ARGS)
+
+compare-opdvr:
+	$(PYTHON) scripts/run_opdvr_comparative_benchmark.py $(ARGS)
 
 evaluate-zero-budget-mve:
 	$(PYTHON) scripts/run_zero_budget_mve.py $(ARGS)
